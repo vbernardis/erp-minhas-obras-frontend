@@ -63,8 +63,8 @@ export default function Financeiro() {
   const carregarDados = async () => {
     try {
       const [obrasRes, notasRes] = await Promise.all([
-        axios.get<Obra[]>('http://localhost:3001/obras'),
-        axios.get<NotaFiscal[]>('http://localhost:3001/notas-fiscais')
+        axios.get<Obra[]>('https://erp-minhas-obras-backend.onrender.com/obras'),
+        axios.get<NotaFiscal[]>('https://erp-minhas-obras-backend.onrender.com/notas-fiscais')
       ]);
       setObras(obrasRes.data);
       setNotas(notasRes.data);
@@ -77,7 +77,7 @@ export default function Financeiro() {
 
   const carregarNotas = async () => {
     try {
-      const res = await axios.get('http://localhost:3001/notas-fiscais');
+      const res = await axios.get('https://erp-minhas-obras-backend.onrender.com/notas-fiscais');
       setNotas(res.data);
     } catch (err) {
       alert('Erro ao carregar notas fiscais.');
@@ -90,7 +90,7 @@ export default function Financeiro() {
 
   const exportarPDFLista = () => {
     const params = obraFiltro ? `?obra_id=${obraFiltro}` : '';
-    window.open(`http://localhost:3001/notas-fiscais/pdf/lista${params}`, '_blank');
+    window.open(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/pdf/lista${params}`, '_blank');
   };
 
   const handleDelete = async (id: number) => {
@@ -103,7 +103,7 @@ export default function Financeiro() {
     if (!window.confirm('Tem certeza que deseja excluir esta nota fiscal?')) return;
 
     try {
-      await axios.delete(`http://localhost:3001/notas-fiscais/${id}`);
+      await axios.delete(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/${id}`);
       alert('Nota excluída com sucesso!');
       carregarNotas();
     } catch (err: any) {
@@ -146,7 +146,7 @@ export default function Financeiro() {
           <button
             onClick={() => {
               const params = obraFiltro ? `?obra_id=${obraFiltro}` : '';
-              window.open(`http://localhost:3001/notas-fiscais/excel${params}`, '_blank');
+              window.open(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/excel${params}`, '_blank');
             }}
             className="flex items-center px-3 py-2 bg-yellow-600 text-white text-sm rounded-lg hover:bg-yellow-700"
           >

@@ -44,7 +44,7 @@ export default function Fornecedores() {
   const carregarFornecedores = async () => {
     setLoading(true);
     try {
-      const res = await axios.get<Fornecedor[]>('http://localhost:3001/fornecedores');
+      const res = await axios.get<Fornecedor[]>('https://erp-minhas-obras-backend.onrender.com/fornecedores');
       setFornecedores(res.data);
     } catch (err) {
       alert('Erro ao carregar fornecedores');
@@ -77,7 +77,7 @@ export default function Fornecedores() {
     if (!window.confirm('Tem certeza que deseja excluir este fornecedor?')) return;
 
     try {
-      await axios.delete(`http://localhost:3001/fornecedores/${id}`);
+      await axios.delete(`https://erp-minhas-obras-backend.onrender.com/fornecedores/${id}`);
       alert('Fornecedor excluído com sucesso!');
       carregarFornecedores();
     } catch (err: any) {
@@ -95,10 +95,10 @@ export default function Fornecedores() {
 
     try {
       if (currentFornecedor) {
-        await axios.put(`http://localhost:3001/fornecedores/${currentFornecedor.id}`, formData);
+        await axios.put(`https://erp-minhas-obras-backend.onrender.com/fornecedores/${currentFornecedor.id}`, formData);
         alert('Fornecedor atualizado com sucesso!');
       } else {
-        await axios.post('http://localhost:3001/fornecedores', formData);
+        await axios.post('https://erp-minhas-obras-backend.onrender.com/fornecedores', formData);
         alert('Fornecedor criado com sucesso!');
       }
 

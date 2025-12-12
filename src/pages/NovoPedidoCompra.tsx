@@ -45,8 +45,8 @@ export default function NovoPedidoCompra() {
   const carregarDados = async () => {
     try {
       const [obrasRes, fornecedoresRes] = await Promise.all([
-        axios.get<Obra[]>('http://localhost:3001/obras'),
-        axios.get<Fornecedor[]>('http://localhost:3001/fornecedores')
+        axios.get<Obra[]>('https://erp-minhas-obras-backend.onrender.com/obras'),
+        axios.get<Fornecedor[]>('https://erp-minhas-obras-backend.onrender.com/fornecedores')
       ]);
       setObras(obrasRes.data);
       setFornecedores(fornecedoresRes.data);
@@ -104,7 +104,7 @@ export default function NovoPedidoCompra() {
     }));
 
     try {
-      await axios.post('http://localhost:3001/pedidos-compra', {
+      await axios.post('https://erp-minhas-obras-backend.onrender.com/pedidos-compra', {
         obra_id: formData.obra_id,
         fornecedor_id: formData.fornecedor_id,
         data_pedido: formData.data_pedido,

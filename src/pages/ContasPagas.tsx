@@ -54,7 +54,7 @@ export default function ContasPagas() {
 
   const carregarNotas = async () => {
     try {
-      const res = await axios.get('http://localhost:3001/financeiro/contas-pagas');
+      const res = await axios.get('https://erp-minhas-obras-backend.onrender.com/financeiro/contas-pagas');
       setNotas(res.data);
     } catch (err) {
       alert('Erro ao carregar contas pagas.');

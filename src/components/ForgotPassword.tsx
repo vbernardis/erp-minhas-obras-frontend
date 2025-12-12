@@ -15,7 +15,7 @@ export default function ForgotPassword() {
     setMessage('');
 
     try {
-      await axios.post('http://localhost:3001/users/forgot-password', { email });
+      await axios.post('https://erp-minhas-obras-backend.onrender.com/users/forgot-password', { email });
       setMessage('Se o e-mail estiver cadastrado, você receberá um link de recuperação.');
     } catch (error: any) {
       setMessage('Erro ao solicitar recuperação de senha.');

@@ -40,7 +40,7 @@ export default function ResetPassword() {
 
     setLoading(true);
     try {
-      await axios.post('http://localhost:3001/users/reset-password', {
+      await axios.post('https://erp-minhas-obras-backend.onrender.com/users/reset-password', {
         token,
         userId,
         newPassword

@@ -89,8 +89,8 @@ export default function NovaNotaFiscal() {
     const carregarDados = async () => {
       try {
         const [obrasRes, fornecedoresRes] = await Promise.all([
-          axios.get<Obra[]>('http://localhost:3001/obras'),
-          axios.get<Fornecedor[]>('http://localhost:3001/fornecedores')
+          axios.get<Obra[]>('https://erp-minhas-obras-backend.onrender.com/obras'),
+          axios.get<Fornecedor[]>('https://erp-minhas-obras-backend.onrender.com/fornecedores')
         ]);
         setObras(obrasRes.data);
         setFornecedores(fornecedoresRes.data);
@@ -106,7 +106,7 @@ export default function NovaNotaFiscal() {
   // Carregar serviços quando obra muda
   useEffect(() => {
     if (obraId) {
-      axios.get<ServicoOrcamento[]>(`http://localhost:3001/obras/${obraId}/servicos-orcamento`)
+      axios.get<ServicoOrcamento[]>(`https://erp-minhas-obras-backend.onrender.com/obras/${obraId}/servicos-orcamento`)
         .then(res => setServicos(res.data))
         .catch(err => {
           console.error('Erro ao carregar serviços:', err);
@@ -219,7 +219,7 @@ const getUsuarioLogado = () => {
         if (anexoNF) formData.append('anexo_nota_fiscal', anexoNF);
         if (anexoBoleto) formData.append('anexo_boleto', anexoBoleto);
 
-        await axios.post('http://localhost:3001/notas-fiscais', formData, {
+        await axios.post('https://erp-minhas-obras-backend.onrender.com/notas-fiscais', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
       } else {
@@ -247,7 +247,7 @@ const getUsuarioLogado = () => {
           
         };
 
-        await axios.post('http://localhost:3001/notas-fiscais', payload);
+        await axios.post('https://erp-minhas-obras-backend.onrender.com/notas-fiscais', payload);
       }
 
       alert('Nota fiscal criada com sucesso!');

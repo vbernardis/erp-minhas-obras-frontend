@@ -40,7 +40,7 @@ export default function Obras() {
   const carregarObras = async () => {
     setLoading(true);
     try {
-      const resposta = await axios.get<Obra[]>('http://localhost:3001/obras');
+      const resposta = await axios.get<Obra[]>('https://erp-minhas-obras-backend.onrender.com/obras');
       setObras(resposta.data);
     } catch (falha) {
       if (falha instanceof Error) {
@@ -87,7 +87,7 @@ export default function Obras() {
     if (!window.confirm('Tem certeza que deseja deletar esta obra?')) return;
 
     try {
-      await axios.delete(`http://localhost:3001/obras/${id}`);
+      await axios.delete(`https://erp-minhas-obras-backend.onrender.com/obras/${id}`);
       alert('Obra deletada com sucesso!');
       carregarObras();
     } catch (falha) {
@@ -116,10 +116,10 @@ export default function Obras() {
       };
 
       if (currentObra) {
-        await axios.put(`http://localhost:3001/obras/${currentObra.id}`, payload);
+        await axios.put(`https://erp-minhas-obras-backend.onrender.com/obras/${currentObra.id}`, payload);
         alert('Obra atualizada com sucesso!');
       } else {
-        await axios.post('http://localhost:3001/obras', payload);
+        await axios.post('https://erp-minhas-obras-backend.onrender.com/obras', payload);
         alert('Obra criada com sucesso!');
       }
 

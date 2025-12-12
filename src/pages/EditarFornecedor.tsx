@@ -47,7 +47,7 @@ export default function EditarFornecedor() {
 
   const carregarFornecedor = async () => {
     try {
-      const res = await axios.get<Fornecedor>(`http://localhost:3001/fornecedores/${fornecedorId}`);
+      const res = await axios.get<Fornecedor>(`https://erp-minhas-obras-backend.onrender.com/fornecedores/${fornecedorId}`);
       setFormData(res.data);
     } catch (err) {
       alert('Erro ao carregar fornecedor.');
@@ -66,7 +66,7 @@ export default function EditarFornecedor() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await axios.put(`http://localhost:3001/fornecedores/${fornecedorId}`, formData);
+      await axios.put(`https://erp-minhas-obras-backend.onrender.com/fornecedores/${fornecedorId}`, formData);
       alert('Fornecedor atualizado com sucesso!');
       navigate('/fornecedores/lista');
     } catch (err: any) {

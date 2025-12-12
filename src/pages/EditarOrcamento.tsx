@@ -534,7 +534,7 @@ export default function EditarOrcamento() {
           Salvar Alterações
         </button>
         <a
-          href={`http://localhost:3001/orcamentos/${id}/pdf`}
+          href={`https://erp-minhas-obras-backend.onrender.com/orcamentos/${id}/pdf`}
           target="_blank"
           rel="noopener noreferrer"
           className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
@@ -550,7 +550,7 @@ export default function EditarOrcamento() {
         </button>
 
         <a
-          href={`http://localhost:3001/orcamentos/${id}/excel`}
+          href={`https://erp-minhas-obras-backend.onrender.com/orcamentos/${id}/excel`}
           target="_blank"
           rel="noopener noreferrer"
           className="px-4 py-2 bg-green-600 text-white text-xs rounded hover:bg-green-700"

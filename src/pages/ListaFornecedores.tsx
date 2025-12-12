@@ -22,7 +22,7 @@ export default function ListaFornecedores() {
 
   const carregarFornecedores = async () => {
     try {
-      const res = await axios.get<Fornecedor[]>('http://localhost:3001/fornecedores');
+      const res = await axios.get<Fornecedor[]>('https://erp-minhas-obras-backend.onrender.com/fornecedores');
       setFornecedores(res.data);
     } catch (err) {
       alert('Erro ao carregar fornecedores.');
@@ -34,7 +34,7 @@ export default function ListaFornecedores() {
   const handleDelete = async (id: number) => {
     if (!window.confirm('Tem certeza que deseja excluir este fornecedor?')) return;
     try {
-      await axios.delete(`http://localhost:3001/fornecedores/${id}`);
+      await axios.delete(`https://erp-minhas-obras-backend.onrender.com/fornecedores/${id}`);
       alert('Fornecedor excluído com sucesso!');
       carregarFornecedores();
     } catch (err: any) {
@@ -43,7 +43,7 @@ export default function ListaFornecedores() {
   };
 
   const exportarPDF = () => {
-    window.open('http://localhost:3001/fornecedores/pdf', '_blank');
+    window.open('https://erp-minhas-obras-backend.onrender.com/fornecedores/pdf', '_blank');
   };
 
   useEffect(() => {

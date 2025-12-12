@@ -48,9 +48,9 @@ export default function EditarPedidoCompra() {
   const carregarDados = async () => {
     try {
       const [obrasRes, fornecedoresRes, pedidoRes] = await Promise.all([
-        axios.get<Obra[]>('http://localhost:3001/obras'),
-        axios.get<Fornecedor[]>('http://localhost:3001/fornecedores'),
-        axios.get<any>(`http://localhost:3001/pedidos-compra/${id}`)
+        axios.get<Obra[]>('https://erp-minhas-obras-backend.onrender.com/obras'),
+        axios.get<Fornecedor[]>('https://erp-minhas-obras-backend.onrender.com/fornecedores'),
+        axios.get<any>(`https://erp-minhas-obras-backend.onrender.com/pedidos-compra/${id}`)
       ]);
 
       setObras(obrasRes.data);
@@ -132,7 +132,7 @@ export default function EditarPedidoCompra() {
     }
 
     try {
-      await axios.put(`http://localhost:3001/pedidos-compra/${id}`, {
+      await axios.put(`https://erp-minhas-obras-backend.onrender.com/pedidos-compra/${id}`, {
         obra_id: formData.obra_id,
         fornecedor_id: formData.fornecedor_id,
         data_pedido: formData.data_pedido,

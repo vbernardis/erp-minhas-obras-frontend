@@ -24,7 +24,7 @@ export default function Register() {
     }
 
     try {
-      const response = await axios.post('http://localhost:3001/users', {
+      const response = await axios.post('https://erp-minhas-obras-backend.onrender.com/users', {
         name,
         email,
         password,

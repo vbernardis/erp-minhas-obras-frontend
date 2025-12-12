@@ -33,7 +33,7 @@ console.log('Tipo de user.id:', typeof user.id);
 
     setLoading(true);
     try {
-      await axios.put('http://localhost:3001/users/change-password', {
+      await axios.put('https://erp-minhas-obras-backend.onrender.com/users/change-password', {
   userId: user.id,
   currentPassword,
   newPassword

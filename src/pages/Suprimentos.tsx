@@ -10,7 +10,7 @@ export default function Suprimentos() {
 
   const carregarPedidos = async () => {
     try {
-      const res = await axios.get('http://localhost:3001/pedidos-compra');
+      const res = await axios.get('https://erp-minhas-obras-backend.onrender.com/pedidos-compra');
       setPedidos(res.data);
     } catch (err) {
       alert('Erro ao carregar pedidos.');
@@ -20,7 +20,7 @@ export default function Suprimentos() {
   const handleDelete = async (id: number) => {
     if (!window.confirm('Tem certeza que deseja excluir este pedido?')) return;
     try {
-      await axios.delete(`http://localhost:3001/pedidos-compra/${id}`);
+      await axios.delete(`https://erp-minhas-obras-backend.onrender.com/pedidos-compra/${id}`);
       alert('Pedido excluído com sucesso!');
       carregarPedidos();
     } catch (err: any) {
@@ -99,7 +99,7 @@ export default function Suprimentos() {
                         <FiEdit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => window.open(`http://localhost:3001/pedidos-compra/${pedido.id}/pdf`, '_blank')}
+                        onClick={() => window.open(`https://erp-minhas-obras-backend.onrender.com/pedidos-compra/${pedido.id}/pdf`, '_blank')}
                         className="text-gray-600 hover:text-blue-600 p-1"
                         title="Exportar PDF"
                       >

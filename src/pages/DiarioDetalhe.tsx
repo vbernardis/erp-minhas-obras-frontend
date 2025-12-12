@@ -38,10 +38,10 @@ export default function DiarioDetalhe() {
       }
 
       try {
-        const diarioRes = await axios.get<DiarioObra>(`http://localhost:3001/diarios-obras/${id}`);
+        const diarioRes = await axios.get<DiarioObra>(`https://erp-minhas-obras-backend.onrender.com/diarios-obras/${id}`);
         setDiario(diarioRes.data);
 
-        const obraRes = await axios.get<{ nome: string }>(`http://localhost:3001/obras/${diarioRes.data.obra_id}`);
+        const obraRes = await axios.get<{ nome: string }>(`https://erp-minhas-obras-backend.onrender.com/obras/${diarioRes.data.obra_id}`);
         setNomeObra(obraRes.data.nome);
       } catch (err: any) {
         console.error('Erro ao carregar diário:', err);

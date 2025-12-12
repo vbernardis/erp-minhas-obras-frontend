@@ -67,7 +67,7 @@ export default function BaixaNotaFiscal() {
   useEffect(() => {
     const fetchNota = async () => {
       try {
-        const response = await axios.get(`http://localhost:3001/notas-fiscais/${notaId}`);
+        const response = await axios.get(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/${notaId}`);
         setNota(response.data);
         // Se a nota já tiver data_pagamento, use-a como valor inicial no campo
         if (response.data.data_pagamento) {
@@ -100,7 +100,7 @@ export default function BaixaNotaFiscal() {
     }
 
     try {
-      await axios.post(`http://localhost:3001/notas-fiscais/${notaId}/baixa`, {
+      await axios.post(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/${notaId}/baixa`, {
         data_pagamento: dataPagamento,
         juros: juros,
         desconto: desconto,

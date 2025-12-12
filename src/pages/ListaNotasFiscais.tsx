@@ -10,7 +10,7 @@ export default function ListaNotasFiscais() {
 
   const carregarNotas = async () => {
     try {
-      const res = await axios.get('http://localhost:3001/notas-fiscais');
+      const res = await axios.get('https://erp-minhas-obras-backend.onrender.com/notas-fiscais');
       setNotas(res.data);
     } catch (err) {
       alert('Erro ao carregar notas fiscais.');

@@ -83,7 +83,7 @@ export default function Diario() {
   const carregarDiarios = useCallback(async () => {
   setLoading(true);
   try {
-    let url = 'http://localhost:3001/diarios-obras?';
+    let url = 'https://erp-minhas-obras-backend.onrender.com/diarios-obras?';
     const params = [];
     if (filtroObra) params.push(`obra_id=${filtroObra}`);
     if (filtroStatus) params.push(`status=${filtroStatus}`);
@@ -105,7 +105,7 @@ export default function Diario() {
 
   const carregarObras = useCallback(async () => {
   try {
-    const resposta = await axios.get<Obra[]>('http://localhost:3001/obras');
+    const resposta = await axios.get<Obra[]>('https://erp-minhas-obras-backend.onrender.com/obras');
     setObras(resposta.data);
   } catch (falha) {
     if (falha instanceof Error) {
@@ -164,7 +164,7 @@ export default function Diario() {
     if (!window.confirm('Tem certeza que deseja deletar este diário?')) return;
 
     try {
-      await axios.delete(`http://localhost:3001/diarios-obras/${id}`);
+      await axios.delete(`https://erp-minhas-obras-backend.onrender.com/diarios-obras/${id}`);
       alert('Diário deletado com sucesso!');
       carregarDiarios();
     } catch (falha) {
@@ -289,10 +289,10 @@ if (imagens.length > 0) {
 };
 
     if (currentDiario) {
-      await axios.put(`http://localhost:3001/diarios-obras/${currentDiario.id}`, payload);
+      await axios.put(`https://erp-minhas-obras-backend.onrender.com/diarios-obras/${currentDiario.id}`, payload);
       alert('Diário atualizado com sucesso!');
     } else {
-      await axios.post('http://localhost:3001/diarios-obras', payload);
+      await axios.post('https://erp-minhas-obras-backend.onrender.com/diarios-obras', payload);
       alert('Diário criado com sucesso!');
     }
 
@@ -316,7 +316,7 @@ if (imagens.length > 0) {
 
   const handleExportPDF = async (id: number) => {
     try {
-      const resposta = await axios.get(`http://localhost:3001/diarios-obras/${id}/pdf`, {
+      const resposta = await axios.get(`https://erp-minhas-obras-backend.onrender.com/diarios-obras/${id}/pdf`, {
         responseType: 'arraybuffer'
       });
       
@@ -401,7 +401,7 @@ if (imagens.length > 0) {
     const mes = filtroStatus
       ? new Date().toISOString().slice(0, 7) // ou use um estado de mês, se tiver
       : new Date().toISOString().slice(0, 7);
-    const url = `http://localhost:3001/mapa-chuvas/pdf?obra_id=${filtroObra}&mes=${mes}`;
+    const url = `https://erp-minhas-obras-backend.onrender.com/mapa-chuvas/pdf?obra_id=${filtroObra}&mes=${mes}`;
     window.open(url, '_blank');
   }}
   disabled={!filtroObra}

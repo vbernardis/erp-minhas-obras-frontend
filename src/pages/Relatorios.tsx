@@ -126,7 +126,7 @@ useEffect(() => {
 
   // Carregar lista de obras
   useEffect(() => {
-    axios.get('http://localhost:3001/obras')
+    axios.get('https://erp-minhas-obras-backend.onrender.com/obras')
       .then(res => setObras(res.data))
       .catch(err => console.error('Erro ao carregar obras:', err));
   }, []);
@@ -164,7 +164,7 @@ const handleExportarExcel = async () => {
 
     // ✅ Fazer requisição com X-User-ID
     const response = await axios.get(
-      `http://localhost:3001/relatorios/obra/${obraIdRelatorio}/orcado-x-realizado/excel`,
+      `https://erp-minhas-obras-backend.onrender.com/relatorios/obra/${obraIdRelatorio}/orcado-x-realizado/excel`,
       {
         responseType: 'blob',
         headers: {
@@ -200,13 +200,13 @@ const handleExportarExcel = async () => {
   try {
     console.log('🔍 Carregando dados para obra ID:', obraIdRelatorio);
     
-    const resObra = await axios.get(`http://localhost:3001/obras/${obraIdRelatorio}`);
+    const resObra = await axios.get(`https://erp-minhas-obras-backend.onrender.com/obras/${obraIdRelatorio}`);
     setObraNome(resObra.data.nome);
 
-    const resOrc = await axios.get(`http://localhost:3001/obras/${obraIdRelatorio}/itens-orcamento`);
+    const resOrc = await axios.get(`https://erp-minhas-obras-backend.onrender.com/obras/${obraIdRelatorio}/itens-orcamento`);
     const itens = resOrc.data; // ✅ DECLARAÇÃO CORRETA AQUI
 
-    const resReal = await axios.get(`http://localhost:3001/relatorios/obra/${obraIdRelatorio}/realizado-por-item`);
+    const resReal = await axios.get(`https://erp-minhas-obras-backend.onrender.com/relatorios/obra/${obraIdRelatorio}/realizado-por-item`);
 
     // Agora "itens" existe!
     console.log('Itens do orçamento (do frontend):', itens.map((i: any) => ({ id: i.id, nivel: i.nivel, descricao: i.descricao })));
@@ -259,7 +259,7 @@ const handleExportarExcel = async () => {
                   <FiArrowLeft className="mr-1 w-4 h-4" /> Voltar
                 </button>
                 <button
-                  onClick={() => window.open(`http://localhost:3001/relatorios/obra/${obraIdRelatorio}/orcado-x-realizado/pdf`, '_blank')}
+                  onClick={() => window.open(`https://erp-minhas-obras-backend.onrender.com/relatorios/obra/${obraIdRelatorio}/orcado-x-realizado/pdf`, '_blank')}
                   className="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700"
                 >
                   Exportar PDF

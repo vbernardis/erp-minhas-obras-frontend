@@ -49,7 +49,7 @@ export default function Dashboard() {
   const carregarObras = async () => {
     setLoading(true);
     try {
-      const obrasRes = await axios.get<Obra[]>('http://localhost:3001/obras');
+      const obrasRes = await axios.get<Obra[]>('https://erp-minhas-obras-backend.onrender.com/obras');
       const listaObras = obrasRes.data;
 
       setObras(listaObras);

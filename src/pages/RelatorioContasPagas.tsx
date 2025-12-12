@@ -14,8 +14,8 @@ export default function RelatorioContasPagas() {
     const carregarNotas = async () => {
       try {
         const [obraRes, notasRes] = await Promise.all([
-          axios.get(`http://localhost:3001/obras/${id}`),
-          axios.get(`http://localhost:3001/notas-fiscais?obra_id=${id}`)
+          axios.get(`https://erp-minhas-obras-backend.onrender.com/obras/${id}`),
+          axios.get(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais?obra_id=${id}`)
         ]);
         setObraNome(obraRes.data.nome);
         setNotas(notasRes.data.filter((n: any) => n.status === 'pago'));
@@ -31,7 +31,7 @@ export default function RelatorioContasPagas() {
 
   const exportarPDF = () => {
     if (id) {
-      window.open(`http://localhost:3001/notas-fiscais/pdf/lista?obra_id=${id}`, '_blank');
+      window.open(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/pdf/lista?obra_id=${id}`, '_blank');
     }
   };
 

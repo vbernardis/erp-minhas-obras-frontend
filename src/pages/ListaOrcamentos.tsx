@@ -136,7 +136,7 @@ export default function ListaOrcamentos() {
                     )}
 
                     <a
-                      href={`http://localhost:3001/orcamentos/${orc.id}/pdf`}
+                      href={`https://erp-minhas-obras-backend.onrender.com/orcamentos/${orc.id}/pdf`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 ml-2"
@@ -145,7 +145,7 @@ export default function ListaOrcamentos() {
                     </a>
 
                     <a
-                      href={`http://localhost:3001/orcamentos/${orc.id}/excel`}
+                      href={`https://erp-minhas-obras-backend.onrender.com/orcamentos/${orc.id}/excel`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="px-3 py-1 bg-purple-600 text-white text-xs rounded hover:bg-purple-700 ml-2"
@@ -171,7 +171,7 @@ export default function ListaOrcamentos() {
                           return;
                         }
                         try {
-                          const response = await fetch(`http://localhost:3001/orcamentos/${orc.id}`, {
+                          const response = await fetch(`https://erp-minhas-obras-backend.onrender.com/orcamentos/${orc.id}`, {
                             method: 'DELETE',
                           });
                           if (response.ok) {

@@ -77,9 +77,9 @@ export default function EditarNotaFiscal() {
     const carregarDados = async () => {
       try {
         const [obrasRes, fornecedoresRes, notaRes] = await Promise.all([
-          axios.get<Obra[]>('http://localhost:3001/obras'),
-          axios.get<Fornecedor[]>('http://localhost:3001/fornecedores'),
-          axios.get<any>(`http://localhost:3001/notas-fiscais/${notaId}`)
+          axios.get<Obra[]>('https://erp-minhas-obras-backend.onrender.com/obras'),
+          axios.get<Fornecedor[]>('https://erp-minhas-obras-backend.onrender.com/fornecedores'),
+          axios.get<any>(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/${notaId}`)
         ]);
         setObras(obrasRes.data);
         setFornecedores(fornecedoresRes.data);
@@ -118,7 +118,7 @@ export default function EditarNotaFiscal() {
   // Carregar serviços quando obra muda
   useEffect(() => {
     if (formData.obra_id) {
-      axios.get<ServicoOrcamento[]>(`http://localhost:3001/obras/${formData.obra_id}/servicos-orcamento`)
+      axios.get<ServicoOrcamento[]>(`https://erp-minhas-obras-backend.onrender.com/obras/${formData.obra_id}/servicos-orcamento`)
         .then(res => setServicos(res.data))
         .catch(err => setServicos([]));
     } else {
@@ -197,7 +197,7 @@ export default function EditarNotaFiscal() {
     const valorTotal = totalItens + (formData.frete || 0);
 
     try {
-      await axios.put(`http://localhost:3001/notas-fiscais/${notaId}`, {
+      await axios.put(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/${notaId}`, {
         ...formData,
         valor_total: valorTotal,
         itens: itens.map(item => ({
