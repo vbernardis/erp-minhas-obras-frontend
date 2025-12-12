@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 import { hasPermission } from '../utils/permissions';
 import * as XLSX from 'xlsx';
+import API_BASE from '../api/config';
 
 
 type Obra = {

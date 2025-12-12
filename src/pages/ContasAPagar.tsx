@@ -152,7 +152,7 @@ export default function ContasAPagar() {
     <button
       onClick={() => {
         if (window.confirm('Excluir nota fiscal?')) {
-          axios.delete(`http://localhost:3001/notas-fiscais/${nota.id}`)
+          axios.delete(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/${nota.id}`)
             .then(() => carregarNotas())
             .catch(err => alert('Erro ao excluir: ' + (err.response?.data?.error || err.message)));
         }

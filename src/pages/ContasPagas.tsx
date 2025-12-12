@@ -35,7 +35,7 @@ export default function ContasPagas() {
     if (!window.confirm('Cancelar a baixa dessa nota? Ela retornará para Contas a Pagar.')) return;
 
     try {
-      await axios.post(`http://localhost:3001/notas-fiscais/${id}/cancelar-baixa`);
+      await axios.post(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/${id}/cancelar-baixa`);
       alert('Baixa cancelada com sucesso!');
       carregarNotas();
     } catch (err: any) {
