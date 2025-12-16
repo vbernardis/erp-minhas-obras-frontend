@@ -5,6 +5,7 @@ import api from '../utils/api';
 import { hasPermission } from '../utils/permissions';
 import * as XLSX from 'xlsx';
 import API_BASE from '../api/config';
+import axios from 'axios'; // ← ✅ ADICIONE ESTA LINHA
 
 
 type Obra = {
@@ -85,7 +86,7 @@ export default function Orcamentos() {
   useEffect(() => {
     const carregarObras = async () => {
       try {
-        const res = await api.get('/obras');
+        const res = await axios.get(`${API_BASE}/obras`);
         setObras(res.data);
       } catch (err) {
         console.error('Erro ao carregar obras:', err);
