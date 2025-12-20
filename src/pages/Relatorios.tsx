@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { FiArrowLeft } from 'react-icons/fi';
+import * as XLSX from 'xlsx'; // ← ADICIONADO
 
 interface Obra {
   id: number;
@@ -126,7 +127,7 @@ useEffect(() => {
 
   // Carregar lista de obras
   useEffect(() => {
-    axios.get('https://erp-minhas-obras-backend.onrender.com/obras')
+    axios.get('https://erp-minhas-obras-backend.onrender.com/obras  ')
       .then(res => setObras(res.data))
       .catch(err => console.error('Erro ao carregar obras:', err));
   }, []);
@@ -144,53 +145,42 @@ useEffect(() => {
     navigate('/relatorios');
   };
 
-  // Função para exportar Excel com autenticação
-const handleExportarExcel = async () => {
-  if (!obraIdRelatorio) return;
-
-  try {
-    // ✅ Buscar usuário do localStorage
-    const userStr = localStorage.getItem('user');
-    if (!userStr) {
-      alert('Você precisa estar logado para exportar.');
+  // ✅ FUNÇÃO ATUALIZADA: Gera Excel no FRONTEND
+  const handleExportarExcel = async () => {
+    if (!obraIdRelatorio || itensOrcamento.length === 0) {
+      alert('Nenhum dado para exportar.');
       return;
     }
 
-    const user = JSON.parse(userStr);
-    if (!user.id) {
-      alert('ID do usuário inválido. Faça login novamente.');
-      return;
-    }
+    try {
+      const worksheetData = itensOrcamento.map((item) => {
+        const isServico = item.nivel === 'servico';
+        const total_item = item.total_item || 0;
+        const realizado = item.realizado || 0;
+        const percentual = total_item > 0 ? ((realizado / total_item) * 100) : 0;
 
-    // ✅ Fazer requisição com X-User-ID
-    const response = await axios.get(
-      `https://erp-minhas-obras-backend.onrender.com/relatorios/obra/${obraIdRelatorio}/orcado-x-realizado/excel`,
-      {
-        responseType: 'blob',
-        headers: {
-          'X-User-ID': String(user.id) // ← Garantir que seja string
-        }
-      }
-    );
+        return {
+          Código: item.codigo || '',
+          Descrição: item.descricao || '',
+          Und: isServico ? (item.unidade || '') : '',
+          Qtd: isServico ? item.quantidade : '',
+          'Vlr Unit. Mat.': isServico ? item.valor_unitario_material : '',
+          'Vlr Unit. Mão Obra': isServico ? item.valor_unitario_mao_obra : '',
+          'Orçado Total': total_item,
+          Realizado: realizado,
+          '% Executado': percentual
+        };
+      });
 
-    // ✅ Disparar download
-    const url = window.URL.createObjectURL(new Blob([response.data]));
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `orcado-x-realizado-obra-${obraIdRelatorio}.xlsx`);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
-  } catch (err: any) {
-    console.error('Erro ao exportar Excel:', err);
-    if (err.response?.data?.error === 'Usuário não autenticado') {
-      alert('Sua sessão expirou. Faça login novamente.');
-    } else {
+      const worksheet = XLSX.utils.json_to_sheet(worksheetData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Orçado x Realizado');
+      XLSX.writeFile(workbook, `orcado-x-realizado-obra-${obraIdRelatorio}.xlsx`);
+    } catch (err) {
+      console.error('Erro ao exportar Excel:', err);
       alert('Erro ao gerar arquivo Excel. Verifique o console.');
     }
-  }
-};
+  };
 
   // Efeito para carregar "Orçado x Realizado"
   useEffect(() => {
@@ -200,13 +190,13 @@ const handleExportarExcel = async () => {
   try {
     console.log('🔍 Carregando dados para obra ID:', obraIdRelatorio);
     
-    const resObra = await axios.get(`https://erp-minhas-obras-backend.onrender.com/obras/${obraIdRelatorio}`);
+    const resObra = await axios.get(`https://erp-minhas-obras-backend.onrender.com/obras/  ${obraIdRelatorio}`);
     setObraNome(resObra.data.nome);
 
-    const resOrc = await axios.get(`https://erp-minhas-obras-backend.onrender.com/obras/${obraIdRelatorio}/itens-orcamento`);
+    const resOrc = await axios.get(`https://erp-minhas-obras-backend.onrender.com/obras/  ${obraIdRelatorio}/itens-orcamento`);
     const itens = resOrc.data; // ✅ DECLARAÇÃO CORRETA AQUI
 
-    const resReal = await axios.get(`https://erp-minhas-obras-backend.onrender.com/relatorios/obra/${obraIdRelatorio}/realizado-por-item`);
+    const resReal = await axios.get(`https://erp-minhas-obras-backend.onrender.com/relatorios/obra/  ${obraIdRelatorio}/realizado-por-item`);
 
     // Agora "itens" existe!
     console.log('Itens do orçamento (do frontend):', itens.map((i: any) => ({ id: i.id, nivel: i.nivel, descricao: i.descricao })));
@@ -259,7 +249,7 @@ const handleExportarExcel = async () => {
                   <FiArrowLeft className="mr-1 w-4 h-4" /> Voltar
                 </button>
                 <button
-                  onClick={() => window.open(`https://erp-minhas-obras-backend.onrender.com/relatorios/obra/${obraIdRelatorio}/orcado-x-realizado/pdf`, '_blank')}
+                  onClick={() => window.open(`https://erp-minhas-obras-backend.onrender.com/relatorios/obra/  ${obraIdRelatorio}/orcado-x-realizado/pdf`, '_blank')}
                   className="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700"
                 >
                   Exportar PDF

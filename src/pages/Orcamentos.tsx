@@ -1,12 +1,11 @@
 // src/pages/Orcamentos.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 import { hasPermission } from '../utils/permissions';
 import * as XLSX from 'xlsx';
 import API_BASE from '../api/config';
-import axios from 'axios'; // ← ✅ ADICIONE ESTA LINHA
-
+import axios from 'axios';
 
 type Obra = {
   id: number;
@@ -27,41 +26,225 @@ type ItemOrcamento = {
 // IMPORTAÇÃO DE EXCEL
 // ======================
 
-
-// Função para converter valores com vírgula (padrão BR) para string no formato "X.XX"
 const parseValorBR = (valor: any): string | null => {
   if (valor === null || valor === undefined || valor === '') {
     return null;
   }
-
-  // Se for número (Excel converte automaticamente), formata para 2 casas
   if (typeof valor === 'number') {
     return valor.toFixed(2);
   }
-
-  // Se for string, limpa e converte
   let str = valor.toString().trim();
   if (str === '') return null;
-
-  // Remove R$, espaços e símbolos
   str = str.replace(/[R$\s]/g, '');
-
-  // Substitui vírgula por ponto (padrão JS)
   str = str.replace(',', '.');
-
-  // Remove pontos de milhar (ex: 1.000 → 1000)
   const partes = str.split('.');
   if (partes.length > 2) {
     const decimal = partes.pop();
     str = partes.join('') + '.' + decimal;
   }
-
   const num = parseFloat(str);
   if (isNaN(num)) return null;
-
   return num.toFixed(2);
 };
 
+// ==========
+// COMPONENTE MEMOIZADO PARA LINHA
+// ==========
+const LinhaOrcamento = memo(({ 
+  item, 
+  idx, 
+  codigo,
+  nivelAnterior,
+  onAtualizar,
+  onRemover,
+  onAdicionarAbaixo,
+  valorEmEdicao,
+  setValorEmEdicao,
+  formatarMoeda,
+  numeroParaInput
+}: {
+  item: ItemOrcamento;
+  idx: number;
+  codigo: string;
+  nivelAnterior: 'local' | 'etapa' | 'subetapa' | 'servico' | null;
+  onAtualizar: (id: string, campo: keyof ItemOrcamento, valor: any) => void;
+  onRemover: (id: string) => void;
+  onAdicionarAbaixo: (nivel: ItemOrcamento['nivel']) => void;
+  valorEmEdicao: Record<string, string>;
+  setValorEmEdicao: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  formatarMoeda: (v: number) => string;
+  numeroParaInput: (v: number | undefined) => string;
+}) => {
+  const isServico = item.nivel === 'servico';
+  const qtd = item.quantidade || 0;
+  const matUnit = item.valor_unitario_material || 0;
+  const maoUnit = item.valor_unitario_mao_obra || 0;
+  const totalMat = qtd * matUnit;
+  const totalMao = qtd * maoUnit;
+  const total = totalMat + totalMao;
+
+  return (
+    <tr key={item.id} className="border-b border-gray-200 hover:bg-gray-100">
+      <td className="p-2 font-mono font-medium">{codigo}</td>
+      <td className="p-2">
+        <input
+          type="text"
+          value={item.descricao}
+          onChange={e => onAtualizar(item.id, 'descricao', e.target.value)}
+          className="w-full border rounded px-2 py-1 text-xs bg-white"
+          placeholder="Descrição"
+        />
+      </td>
+      <td className="p-2">
+        {isServico ? (
+          <input
+            type="text"
+            value={item.unidade || ''}
+            onChange={e => onAtualizar(item.id, 'unidade', e.target.value)}
+            className="w-16 border rounded px-2 py-1 text-xs bg-white"
+            placeholder="m²"
+          />
+        ) : null}
+      </td>
+      <td className="p-2 text-right">
+        {isServico ? (
+          <input
+            type="text"
+            value={valorEmEdicao[item.id + '_qtd'] !== undefined 
+              ? valorEmEdicao[item.id + '_qtd'] 
+              : numeroParaInput(item.quantidade)}
+            onChange={e => {
+              let valor = e.target.value;
+              valor = valor.replace(/[^0-9,]/g, '');
+              if (valor.startsWith(',')) valor = '0' + valor;
+              setValorEmEdicao(prev => ({ ...prev, [item.id + '_qtd']: valor }));
+            }}
+            onBlur={e => {
+              const raw = valorEmEdicao[item.id + '_qtd'] || '';
+              const num = raw ? parseFloat(raw.replace(',', '.')) : NaN;
+              if (!isNaN(num) && num >= 0 && num <= 1000000) {
+                onAtualizar(item.id, 'quantidade', num);
+              } else {
+                onAtualizar(item.id, 'quantidade', undefined);
+              }
+              setValorEmEdicao(prev => {
+                const novo = { ...prev };
+                delete novo[item.id + '_qtd'];
+                return novo;
+              });
+            }}
+            className="w-20 border rounded px-2 py-1 text-xs text-right bg-white"
+            placeholder="0,00"
+          />
+        ) : null}
+      </td>
+      <td className="p-2 text-right">
+        {isServico ? (
+          <input
+            type="text"
+            value={valorEmEdicao[item.id + '_mat'] !== undefined 
+              ? valorEmEdicao[item.id + '_mat'] 
+              : numeroParaInput(item.valor_unitario_material)}
+            onChange={e => {
+              let valor = e.target.value;
+              valor = valor.replace(/[^0-9,]/g, '');
+              if (valor.startsWith(',')) valor = '0' + valor;
+              setValorEmEdicao(prev => ({ ...prev, [item.id + '_mat']: valor }));
+            }}
+            onBlur={e => {
+              const raw = valorEmEdicao[item.id + '_mat'] || '';
+              const num = raw ? parseFloat(raw.replace(',', '.')) : NaN;
+              if (!isNaN(num) && num >= 0 && num <= 1000000000000) {
+                onAtualizar(item.id, 'valor_unitario_material', num);
+              } else {
+                onAtualizar(item.id, 'valor_unitario_material', undefined);
+              }
+              setValorEmEdicao(prev => {
+                const novo = { ...prev };
+                delete novo[item.id + '_mat'];
+                return novo;
+              });
+            }}
+            className="w-24 border rounded px-2 py-1 text-xs text-right bg-white"
+            placeholder="0,00"
+          />
+        ) : null}
+      </td>
+      <td className="p-2 text-right">
+        {isServico ? (
+          <input
+            type="text"
+            value={valorEmEdicao[item.id + '_mao'] !== undefined 
+              ? valorEmEdicao[item.id + '_mao'] 
+              : numeroParaInput(item.valor_unitario_mao_obra)}
+            onChange={e => {
+              let valor = e.target.value;
+              valor = valor.replace(/[^0-9,]/g, '');
+              if (valor.startsWith(',')) valor = '0' + valor;
+              setValorEmEdicao(prev => ({ ...prev, [item.id + '_mao']: valor }));
+            }}
+            onBlur={e => {
+              const raw = valorEmEdicao[item.id + '_mao'] || '';
+              const num = raw ? parseFloat(raw.replace(',', '.')) : NaN;
+              if (!isNaN(num) && num >= 0 && num <= 1000000000000) {
+                onAtualizar(item.id, 'valor_unitario_mao_obra', num);
+              } else {
+                onAtualizar(item.id, 'valor_unitario_mao_obra', undefined);
+              }
+              setValorEmEdicao(prev => {
+                const novo = { ...prev };
+                delete novo[item.id + '_mao'];
+                return novo;
+              });
+            }}
+            className="w-24 border rounded px-2 py-1 text-xs text-right bg-white"
+            placeholder="0,00"
+          />
+        ) : null}
+      </td>
+      <td className="p-2 text-right font-medium">
+        {isServico ? formatarMoeda(totalMat) : ''}
+      </td>
+      <td className="p-2 text-right font-medium">
+        {isServico ? formatarMoeda(totalMao) : ''}
+      </td>
+      <td className="p-2 text-right font-medium">
+        {isServico ? formatarMoeda(total) : ''}
+      </td>
+      <td className="p-2">
+        <div className="flex gap-2 text-xs">
+          <button
+            type="button"
+            onClick={() => onRemover(item.id)}
+            className="text-red-600 hover:text-red-900"
+          >
+            Remover
+          </button>
+          <select
+            onChange={e => {
+              if (e.target.value) {
+                onAdicionarAbaixo(e.target.value as any);
+                e.target.value = '';
+              }
+            }}
+            className="border rounded px-1 py-0 text-xs"
+            defaultValue=""
+          >
+            <option value="">+ Inserir abaixo</option>
+            <option value="local">Local</option>
+            <option value="etapa">Etapa</option>
+            <option value="subetapa">Subetapa</option>
+            <option value="servico">Serviço</option>
+          </select>
+        </div>
+      </td>
+    </tr>
+  );
+});
+
+// ==========
+// COMPONENTE PRINCIPAL
+// ==========
 export default function Orcamentos() {
   const navigate = useNavigate();
 
@@ -78,8 +261,6 @@ export default function Orcamentos() {
   const [taxaAdministracao, setTaxaAdministracao] = useState<number>(0);
   const [dataBase, setDataBase] = useState<string>(new Date().toISOString().split('T')[0]);
   const [status, setStatus] = useState('Em desenvolvimento');
-
-  // ✅ Estado para rascunhos dos campos em edição
   const [valorEmEdicao, setValorEmEdicao] = useState<Record<string, string>>({});
 
   // Carregar obras
@@ -99,7 +280,6 @@ export default function Orcamentos() {
   const adicionarLinha = (nivel: ItemOrcamento['nivel'], afterId?: string) => {
     const novoId = Date.now().toString();
     const novoItem = { id: novoId, nivel, descricao: '' };
-    
     if (afterId) {
       const index = itens.findIndex(item => item.id === afterId);
       if (index !== -1) {
@@ -120,7 +300,6 @@ export default function Orcamentos() {
 
   const removerItem = (id: string) => {
     setItens(prev => prev.filter(item => item.id !== id));
-    // Limpa rascunhos ao remover item
     setValorEmEdicao(prev => {
       const novo = { ...prev };
       delete novo[id + '_qtd'];
@@ -130,78 +309,58 @@ export default function Orcamentos() {
     });
   };
 
-  // ✅ Geração correta do código hierárquico
-  const gerarCodigo = (index: number): string => {
-    const item = itens[index];
-    if (!item) return '';
+  // ✅ CÁLCULO EFICIENTE DOS CÓDIGOS COM USEMEMO
+  const codigos = useMemo(() => {
+  const codigosMap: Record<number, string> = {};
+  let contadorLocal = 0;
+  const contadorEtapa: Record<number, number> = {};
+  const contadorSubetapa: Record<string, Record<string, number>> = {}; // ✅ Corrigido: agora é objeto de objetos
 
+  itens.forEach((item, idx) => {
     if (item.nivel === 'local') {
-      const locais = itens.filter(i => i.nivel === 'local');
-      const seq = locais.indexOf(item) + 1;
-      return String(seq).padStart(2, '0');
-    }
-
-    if (item.nivel === 'etapa') {
-      // Encontrar o local pai (último local antes deste item)
-      let localIndex = -1;
-      for (let i = index - 1; i >= 0; i--) {
-        if (itens[i].nivel === 'local') {
-          localIndex = i;
-          break;
-        }
+      contadorLocal++;
+      codigosMap[idx] = String(contadorLocal).padStart(2, '0');
+      contadorEtapa[contadorLocal] = 0;
+      contadorSubetapa[contadorLocal] = {}; // ✅ Agora isso é válido
+    } else if (item.nivel === 'etapa') {
+      contadorEtapa[contadorLocal]++;
+      const etapaSeq = contadorEtapa[contadorLocal];
+      codigosMap[idx] = `${String(contadorLocal).padStart(2, '0')}.${String(etapaSeq).padStart(2, '0')}`;
+      contadorSubetapa[contadorLocal][etapaSeq] = 0; // ✅ Inicializa contador de subetapas para esta etapa
+    } else if (item.nivel === 'subetapa') {
+      const localId = contadorLocal;
+      const etapaId = contadorEtapa[localId] || 1;
+      const key = `${localId}-${etapaId}`;
+      
+      // Garantir que o contador da subetapa existe
+      if (!contadorSubetapa[localId]) contadorSubetapa[localId] = {};
+      if (contadorSubetapa[localId][etapaId] === undefined) {
+        contadorSubetapa[localId][etapaId] = 0;
       }
-      if (localIndex === -1) return '01.01'; // fallback
+      contadorSubetapa[localId][etapaId]++;
 
-      const localSeq = gerarCodigo(localIndex);
-      const etapasDoLocal = itens
-        .slice(0, index)
-        .filter(i => i.nivel === 'etapa' && gerarCodigo(itens.indexOf(i)).startsWith(localSeq));
-      const seq = etapasDoLocal.length + 1;
-      return `${localSeq}.${String(seq).padStart(2, '0')}`;
-    }
-
-    if (item.nivel === 'subetapa') {
-      // Encontrar a etapa pai (última etapa antes deste item)
-      let etapaIndex = -1;
-      for (let i = index - 1; i >= 0; i--) {
-        if (itens[i].nivel === 'etapa') {
-          etapaIndex = i;
-          break;
-        }
-      }
-      if (etapaIndex === -1) return '01.01.01';
-
-      const etapaCodigo = gerarCodigo(etapaIndex);
-      const subetapasDaEtapa = itens
-        .slice(0, index)
-        .filter(i => i.nivel === 'subetapa' && gerarCodigo(itens.indexOf(i)).startsWith(etapaCodigo));
-      const seq = subetapasDaEtapa.length + 1;
-      return `${etapaCodigo}.${String(seq).padStart(2, '0')}`;
-    }
-
-    if (item.nivel === 'servico') {
-      // Encontrar a subetapa ou etapa pai
-      let parentIndex = -1;
-      for (let i = index - 1; i >= 0; i--) {
+      const subSeq = contadorSubetapa[localId][etapaId];
+      codigosMap[idx] = `${String(localId).padStart(2, '0')}.${String(etapaId).padStart(2, '0')}.${String(subSeq).padStart(2, '0')}`;
+    } else if (item.nivel === 'servico') {
+      // Encontrar o último nível superior (subetapa ou etapa)
+      let parentIdx = -1;
+      for (let i = idx - 1; i >= 0; i--) {
         if (itens[i].nivel === 'subetapa' || itens[i].nivel === 'etapa') {
-          parentIndex = i;
+          parentIdx = i;
           break;
         }
       }
-      if (parentIndex === -1) return '01.01.01.01';
-
-      const parentCodigo = gerarCodigo(parentIndex);
-      const servicosDoPai = itens
-        .slice(0, index)
-        .filter(i => i.nivel === 'servico' && gerarCodigo(itens.indexOf(i)).startsWith(parentCodigo));
-      const seq = servicosDoPai.length + 1;
-      return `${parentCodigo}.${String(seq).padStart(2, '0')}`;
+      const parentCodigo = parentIdx >= 0 ? codigosMap[parentIdx] : '00.00.00';
+      const servicosAnt = itens
+        .slice(0, idx)
+        .filter((i, iIdx) => i.nivel === 'servico' && codigosMap[iIdx]?.startsWith(parentCodigo)).length;
+      codigosMap[idx] = `${parentCodigo}.${String(servicosAnt + 1).padStart(2, '0')}`;
     }
+  });
 
-    return '';
-  };
+  return codigosMap;
+}, [itens]);
 
-  // Cálculos
   const subtotal = itens
     .filter(i => i.nivel === 'servico')
     .reduce((sum, i) => {
@@ -213,7 +372,6 @@ export default function Orcamentos() {
 
   const valorTotal = subtotal * (1 + taxaAdministracao / 100);
 
-  // Formatação
   const formatarMoeda = (valor: number) => {
     return valor.toLocaleString('pt-BR', {
       style: 'currency',
@@ -223,13 +381,11 @@ export default function Orcamentos() {
     });
   };
 
-  // Função auxiliar para exibir número com vírgula (sem milhar)
   const numeroParaInput = (valor: number | undefined): string => {
     if (valor === undefined || valor === null || isNaN(valor)) return '';
     return valor.toString().replace('.', ',');
   };
 
-  // Salvar
   const salvarOrcamento = async () => {
     if (!obraSelecionada) {
       alert('Selecione uma obra.');
@@ -261,116 +417,107 @@ export default function Orcamentos() {
     alert('Após salvar o orçamento, o PDF estará disponível na listagem.');
   };
 
-  // Função para importar Excel - CORRIGIDA
-const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
+  const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = (evt) => {
-    try {
-      const bstr = evt.target?.result as string;
-      const wb = XLSX.read(bstr, { type: 'binary' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result as string;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
-      if (jsonData.length < 2) {
-        alert('Planilha vazia ou sem dados.');
-        return;
-      }
-
-      const headers = jsonData[0] as string[];
-      const requiredColumns = [
-        'nivel', 'codigo', 'descricao',
-        'unidade', 'quantidade',
-        'valor_unitario_material', 'valor_unitario_mao_obra'
-      ];
-
-      const lowerHeaders = headers.map(h => h?.toLowerCase().trim());
-      for (const col of requiredColumns) {
-        if (!lowerHeaders.includes(col)) {
-          alert(`Coluna obrigatória ausente: "${col}". Use o modelo fornecido.`);
-          return;
-        }
-      }
-
-      const colIndex: Record<string, number> = {};
-      headers.forEach((h, i) => {
-        colIndex[h.toLowerCase().trim()] = i;
-      });
-
-      const novosItens: ItemOrcamento[] = [];
-      let idCounter = 1; // Para garantir IDs únicos
-
-      for (let i = 1; i < jsonData.length; i++) {
-        const row = jsonData[i] as any[];
-        const nivelTexto = (row[colIndex['nivel']] || '').toString().toLowerCase().trim();
-        if (!['local', 'etapa', 'subetapa', 'servico'].includes(nivelTexto)) {
-          alert(`Linha ${i+1}: nível inválido. Use: local, etapa, subetapa ou servico.`);
+        if (jsonData.length < 2) {
+          alert('Planilha vazia ou sem dados.');
           return;
         }
 
-        const nivel = nivelTexto as 'local' | 'etapa' | 'subetapa' | 'servico';
-        const descricao = (row[colIndex['descricao']] || '').toString().trim();
-        if (!descricao) {
-          alert(`Linha ${i+1}: descrição não preenchida.`);
-          return;
+        const headers = jsonData[0] as string[];
+        const requiredColumns = [
+          'nivel', 'codigo', 'descricao',
+          'unidade', 'quantidade',
+          'valor_unitario_material', 'valor_unitario_mao_obra'
+        ];
+
+        const lowerHeaders = headers.map(h => h?.toLowerCase().trim());
+        for (const col of requiredColumns) {
+          if (!lowerHeaders.includes(col)) {
+            alert(`Coluna obrigatória ausente: "${col}". Use o modelo fornecido.`);
+            return;
+          }
         }
 
-        const isServico = nivel === 'servico';
-        const unidade = isServico ? (row[colIndex['unidade']] || '').toString().trim() || undefined : undefined;
-
-        // Função para converter valor brasileiro para número
-        const parseToNumber = (valor: any): number | undefined => {
-          if (valor === null || valor === undefined || valor === '') {
-            return undefined;
-          }
-          if (typeof valor === 'number') {
-            return valor;
-          }
-          let str = valor.toString().trim();
-          if (str === '') return undefined;
-          str = str.replace(/[R$\s]/g, '');
-          str = str.replace(',', '.');
-          const partes = str.split('.');
-          if (partes.length > 2) {
-            const decimal = partes.pop();
-            str = partes.join('') + '.' + decimal;
-          }
-          const num = parseFloat(str);
-          return isNaN(num) ? undefined : num;
-        };
-
-        const quantidade = isServico ? parseToNumber(row[colIndex['quantidade']]) : undefined;
-        const valor_unitario_material = isServico ? parseToNumber(row[colIndex['valor_unitario_material']]) : undefined;
-        const valor_unitario_mao_obra = isServico ? parseToNumber(row[colIndex['valor_unitario_mao_obra']]) : undefined;
-
-        novosItens.push({
-          id: `imported_${Date.now()}_${idCounter++}`, // ID único
-          nivel,
-          descricao,
-          unidade,
-          quantidade,
-          valor_unitario_material,
-          valor_unitario_mao_obra
+        const colIndex: Record<string, number> = {};
+        headers.forEach((h, i) => {
+          colIndex[h.toLowerCase().trim()] = i;
         });
+
+        const novosItens: ItemOrcamento[] = [];
+        let idCounter = 1;
+
+        for (let i = 1; i < jsonData.length; i++) {
+          const row = jsonData[i] as any[];
+          const nivelTexto = (row[colIndex['nivel']] || '').toString().toLowerCase().trim();
+          if (!['local', 'etapa', 'subetapa', 'servico'].includes(nivelTexto)) {
+            alert(`Linha ${i+1}: nível inválido. Use: local, etapa, subetapa ou servico.`);
+            return;
+          }
+
+          const nivel = nivelTexto as 'local' | 'etapa' | 'subetapa' | 'servico';
+          const descricao = (row[colIndex['descricao']] || '').toString().trim();
+          if (!descricao) {
+            alert(`Linha ${i+1}: descrição não preenchida.`);
+            return;
+          }
+
+          const isServico = nivel === 'servico';
+          const unidade = isServico ? (row[colIndex['unidade']] || '').toString().trim() || undefined : undefined;
+
+          const parseToNumber = (valor: any): number | undefined => {
+            if (valor === null || valor === undefined || valor === '') return undefined;
+            if (typeof valor === 'number') return valor;
+            let str = valor.toString().trim();
+            if (str === '') return undefined;
+            str = str.replace(/[R$\s]/g, '');
+            str = str.replace(',', '.');
+            const partes = str.split('.');
+            if (partes.length > 2) {
+              const decimal = partes.pop();
+              str = partes.join('') + '.' + decimal;
+            }
+            const num = parseFloat(str);
+            return isNaN(num) ? undefined : num;
+          };
+
+          const quantidade = isServico ? parseToNumber(row[colIndex['quantidade']]) : undefined;
+          const valor_unitario_material = isServico ? parseToNumber(row[colIndex['valor_unitario_material']]) : undefined;
+          const valor_unitario_mao_obra = isServico ? parseToNumber(row[colIndex['valor_unitario_mao_obra']]) : undefined;
+
+          novosItens.push({
+            id: `imported_${Date.now()}_${idCounter++}`,
+            nivel,
+            descricao,
+            unidade,
+            quantidade,
+            valor_unitario_material,
+            valor_unitario_mao_obra
+          });
+        }
+
+        setItens(novosItens);
+        setValorEmEdicao({});
+        alert(`Orçamento importado com sucesso! ${novosItens.length} itens.`);
+      } catch (err) {
+        console.error('Erro ao importar:', err);
+        alert('Erro ao processar a planilha. Use o modelo correto.');
       }
-
-      // ✅ Usa seu estado EXISTENTE
-      setItens(novosItens);
-
-      // ✅ Limpa o rascunho de edição (importante!)
-      setValorEmEdicao({});
-
-      alert(`Orçamento importado com sucesso! ${novosItens.length} itens.`);
-    } catch (err) {
-      console.error('Erro ao importar:', err);
-      alert('Erro ao processar a planilha. Use o modelo correto.');
-    }
+    };
+    reader.readAsBinaryString(file);
   };
-  reader.readAsBinaryString(file);
-};
-    return (
+
+  return (
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Orçamentos</h1>
@@ -397,20 +544,19 @@ const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
           </button>
 
           <button
-          type="button"
-          onClick={() => document.getElementById('import-orcamento')?.click()}
-          className="px-4 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-800 text-sm"
-        >
-          📥 Importar Excel
-        </button>
-        <input
-          type="file"
-          accept=".xlsx, .xls"
-          onChange={handleImportExcel}
-          className="hidden"
-          id="import-orcamento"
-        />
-
+            type="button"
+            onClick={() => document.getElementById('import-orcamento')?.click()}
+            className="px-4 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-800 text-sm"
+          >
+            📥 Importar Excel
+          </button>
+          <input
+            type="file"
+            accept=".xlsx, .xls"
+            onChange={handleImportExcel}
+            className="hidden"
+            id="import-orcamento"
+          />
         </div>
       </div>
 
@@ -461,7 +607,6 @@ const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
               onChange={e => setTaxaAdministracao(Number(e.target.value) || 0)}
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
             />
-            
           </div>
         </div>
       </div>
@@ -516,171 +661,27 @@ const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
           </thead>
           <tbody className="bg-gray-50">
             {itens.map((item, idx) => {
-              const codigo = gerarCodigo(idx);
-              const isServico = item.nivel === 'servico';
-              const qtd = item.quantidade || 0;
-              const matUnit = item.valor_unitario_material || 0;
-              const maoUnit = item.valor_unitario_mao_obra || 0;
-              const totalMat = qtd * matUnit;
-              const totalMao = qtd * maoUnit;
-              const total = totalMat + totalMao;
+              // Determina o nível do item anterior (para hierarquia visual clara)
+              let nivelAnterior: 'local' | 'etapa' | 'subetapa' | 'servico' | null = null;
+              if (idx > 0) {
+                nivelAnterior = itens[idx - 1].nivel;
+              }
 
               return (
-                <tr key={item.id} className="border-b border-gray-200 hover:bg-gray-100">
-                  <td className="p-2 font-mono font-medium">{codigo}</td>
-                  <td className="p-2">
-                    <input
-                      type="text"
-                      value={item.descricao}
-                      onChange={e => atualizarItem(item.id, 'descricao', e.target.value)}
-                      className="w-full border rounded px-2 py-1 text-xs bg-white"
-                      placeholder="Descrição"
-                    />
-                  </td>
-                  <td className="p-2">
-                    {isServico ? (
-                      <input
-                        type="text"
-                        value={item.unidade || ''}
-                        onChange={e => atualizarItem(item.id, 'unidade', e.target.value)}
-                        className="w-16 border rounded px-2 py-1 text-xs bg-white"
-                        placeholder="m²"
-                      />
-                    ) : null}
-                  </td>
-                  <td className="p-2 text-right">
-                    {isServico ? (
-                      <input
-                        type="text"
-                        value={valorEmEdicao[item.id + '_qtd'] !== undefined 
-                          ? valorEmEdicao[item.id + '_qtd'] 
-                          : numeroParaInput(item.quantidade)}
-                        onChange={e => {
-                          let valor = e.target.value;
-                          valor = valor.replace(/[^0-9,]/g, '');
-                          if (valor.startsWith(',')) valor = '0' + valor;
-                          setValorEmEdicao(prev => ({ ...prev, [item.id + '_qtd']: valor }));
-                        }}
-                        onBlur={e => {
-                          const raw = valorEmEdicao[item.id + '_qtd'] || '';
-                          const num = raw ? parseFloat(raw.replace(',', '.')) : NaN;
-                          if (!isNaN(num) && num >= 0 && num <= 1000000) {
-                            atualizarItem(item.id, 'quantidade', num);
-                          } else {
-                            atualizarItem(item.id, 'quantidade', undefined);
-                          }
-                          setValorEmEdicao(prev => {
-                            const novo = { ...prev };
-                            delete novo[item.id + '_qtd'];
-                            return novo;
-                          });
-                        }}
-                        className="w-20 border rounded px-2 py-1 text-xs text-right bg-white"
-                        placeholder="0,00"
-                      />
-                    ) : null}
-                  </td>
-                  <td className="p-2 text-right">
-                    {isServico ? (
-                      <input
-                        type="text"
-                        value={valorEmEdicao[item.id + '_mat'] !== undefined 
-                          ? valorEmEdicao[item.id + '_mat'] 
-                          : numeroParaInput(item.valor_unitario_material)}
-                        onChange={e => {
-                          let valor = e.target.value;
-                          valor = valor.replace(/[^0-9,]/g, '');
-                          if (valor.startsWith(',')) valor = '0' + valor;
-                          setValorEmEdicao(prev => ({ ...prev, [item.id + '_mat']: valor }));
-                        }}
-                        onBlur={e => {
-                          const raw = valorEmEdicao[item.id + '_mat'] || '';
-                          const num = raw ? parseFloat(raw.replace(',', '.')) : NaN;
-                          if (!isNaN(num) && num >= 0 && num <= 1000000000000) {
-                            atualizarItem(item.id, 'valor_unitario_material', num);
-                          } else {
-                            atualizarItem(item.id, 'valor_unitario_material', undefined);
-                          }
-                          setValorEmEdicao(prev => {
-                            const novo = { ...prev };
-                            delete novo[item.id + '_mat'];
-                            return novo;
-                          });
-                        }}
-                        className="w-24 border rounded px-2 py-1 text-xs text-right bg-white"
-                        placeholder="0,00"
-                      />
-                    ) : null}
-                  </td>
-                  <td className="p-2 text-right">
-                    {isServico ? (
-                      <input
-                        type="text"
-                        value={valorEmEdicao[item.id + '_mao'] !== undefined 
-                          ? valorEmEdicao[item.id + '_mao'] 
-                          : numeroParaInput(item.valor_unitario_mao_obra)}
-                        onChange={e => {
-                          let valor = e.target.value;
-                          valor = valor.replace(/[^0-9,]/g, '');
-                          if (valor.startsWith(',')) valor = '0' + valor;
-                          setValorEmEdicao(prev => ({ ...prev, [item.id + '_mao']: valor }));
-                        }}
-                        onBlur={e => {
-                          const raw = valorEmEdicao[item.id + '_mao'] || '';
-                          const num = raw ? parseFloat(raw.replace(',', '.')) : NaN;
-                          if (!isNaN(num) && num >= 0 && num <= 1000000000000) {
-                            atualizarItem(item.id, 'valor_unitario_mao_obra', num);
-                          } else {
-                            atualizarItem(item.id, 'valor_unitario_mao_obra', undefined);
-                          }
-                          setValorEmEdicao(prev => {
-                            const novo = { ...prev };
-                            delete novo[item.id + '_mao'];
-                            return novo;
-                          });
-                        }}
-                        className="w-24 border rounded px-2 py-1 text-xs text-right bg-white"
-                        placeholder="0,00"
-                      />
-                    ) : null}
-                  </td>
-                  <td className="p-2 text-right font-medium">
-                    {isServico ? formatarMoeda(totalMat) : ''}
-                  </td>
-                  <td className="p-2 text-right font-medium">
-                    {isServico ? formatarMoeda(totalMao) : ''}
-                  </td>
-                  <td className="p-2 text-right font-medium">
-                    {isServico ? formatarMoeda(total) : ''}
-                  </td>
-                  <td className="p-2">
-                    <div className="flex gap-2 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => removerItem(item.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Remover
-                      </button>
-                      <select
-                        onChange={e => {
-                          if (e.target.value) {
-                            adicionarLinha(e.target.value as any, item.id);
-                            e.target.value = '';
-                          }
-                        }}
-                        className="border rounded px-1 py-0 text-xs"
-                        defaultValue=""
-                      >
-                        <option value="">+ Inserir abaixo</option>
-                        <option value="local">Local</option>
-                        <option value="etapa">Etapa</option>
-                        <option value="subetapa">Subetapa</option>
-                        <option value="servico">Serviço</option>
-                      </select>
-                    </div>
-                  </td>
-                </tr>
+                <LinhaOrcamento
+                  key={item.id}
+                  item={item}
+                  idx={idx}
+                  codigo={codigos[idx] || ''}
+                  nivelAnterior={nivelAnterior}
+                  onAtualizar={atualizarItem}
+                  onRemover={removerItem}
+                  onAdicionarAbaixo={(nivel) => adicionarLinha(nivel, item.id)}
+                  valorEmEdicao={valorEmEdicao}
+                  setValorEmEdicao={setValorEmEdicao}
+                  formatarMoeda={formatarMoeda}
+                  numeroParaInput={numeroParaInput}
+                />
               );
             })}
           </tbody>
@@ -702,6 +703,6 @@ const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
           <span>{formatarMoeda(valorTotal)}</span>
         </div>
       </div>
-     </div>
+    </div>
   );
 }
