@@ -3,7 +3,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { FiArrowLeft } from 'react-icons/fi';
-import * as XLSX from 'xlsx'; // ← ADICIONADO
+import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface Obra {
   id: number;
@@ -145,7 +147,7 @@ useEffect(() => {
     navigate('/relatorios');
   };
 
-  // ✅ FUNÇÃO ATUALIZADA: Gera Excel no FRONTEND
+  // ✅ Função para exportar Excel real (dados estruturados)
   const handleExportarExcel = async () => {
     if (!obraIdRelatorio || itensOrcamento.length === 0) {
       alert('Nenhum dado para exportar.');
@@ -182,6 +184,104 @@ useEffect(() => {
     }
   };
 
+  // ✅ Função para exportar PDF real (corrigida para autoTable)
+const handleExportarPDF = () => {
+  if (!obraIdRelatorio || itensOrcamento.length === 0) {
+    alert('Nenhum dado para exportar.');
+    return;
+  }
+
+  try {
+    const doc = new jsPDF('landscape', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.width;
+
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Relatório Orçado x Realizado - Obra: ${obraNome}`, pageWidth / 2, 15, { align: 'center' });
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, pageWidth / 2, 22, { align: 'center' });
+
+    const tableData = itensOrcamento.map(item => {
+      const isServico = item.nivel === 'servico';
+      const total_item = item.total_item || 0;
+      const realizado = item.realizado || 0;
+      const percentual = total_item > 0 ? `${((realizado / total_item) * 100).toFixed(1)}%` : '—';
+
+      return [
+        item.codigo || '',
+        item.descricao || '',
+        isServico ? (item.unidade || '—') : '',
+        isServico ? (item.quantidade !== null ? item.quantidade.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '—') : '',
+        isServico ? (item.valor_unitario_material !== null ? formatarMoeda(item.valor_unitario_material) : '—') : '',
+        isServico ? (item.valor_unitario_mao_obra !== null ? formatarMoeda(item.valor_unitario_mao_obra) : '—') : '',
+        formatarMoeda(total_item),
+        formatarMoeda(realizado),
+        percentual
+      ];
+    });
+
+    const tableHeaders = [
+      'Cód.', 'Descrição', 'Und', 'Qtd', 'Vlr Unit. Mat.', 
+      'Vlr Unit. Mão Obra', 'Orçado Total', 'Realizado', '% Executado'
+    ];
+
+    const getRowStyle = (rowIndex: number) => {
+      const item = itensOrcamento[rowIndex];
+      if (!item || item.nivel === 'servico') return {};
+      return { fontStyle: 'bold' };
+    };
+
+    // ✅ USO CORRETO DE AUTOTABLE
+    autoTable(doc, {
+      startY: 30,
+      head: [tableHeaders],
+      body: tableData,
+      theme: 'grid',
+      headStyles: {
+        fillColor: [30, 58, 138],
+        textColor: [255, 255, 255],
+        fontSize: 8,
+        valign: 'middle'
+      },
+      bodyStyles: {
+        fontSize: 7,
+        cellPadding: 2,
+        valign: 'middle'
+      },
+      columnStyles: {
+        0: { cellWidth: 20, halign: 'center' },
+        1: { cellWidth: 60 },
+        2: { cellWidth: 15, halign: 'center' },
+        3: { cellWidth: 20, halign: 'right' },
+        4: { cellWidth: 25, halign: 'right' },
+        5: { cellWidth: 28, halign: 'right' },
+        6: { cellWidth: 25, halign: 'right' },
+        7: { cellWidth: 25, halign: 'right' },
+        8: { cellWidth: 22, halign: 'right' }
+      },
+      didParseCell: (hookData: any) => {
+        if (hookData.section === 'body') {
+          const style = getRowStyle(hookData.row.index);
+          if (style.fontStyle) {
+            hookData.cell.styles.fontStyle = style.fontStyle;
+          }
+        }
+      },
+      styles: {
+        overflow: 'linebreak',
+        cellWidth: 'wrap'
+      }
+    });
+
+    doc.save(`orcado-x-realizado-obra-${obraIdRelatorio}.pdf`);
+  } catch (err) {
+    console.error('Erro ao gerar PDF:', err);
+    alert('Erro ao gerar PDF. Verifique o console.');
+  }
+};
+
   // Efeito para carregar "Orçado x Realizado"
   useEffect(() => {
     if (tipoRelatorio === 'orcamento-comparativo' && obraIdRelatorio) {
@@ -194,13 +294,9 @@ useEffect(() => {
     setObraNome(resObra.data.nome);
 
     const resOrc = await axios.get(`https://erp-minhas-obras-backend.onrender.com/obras/  ${obraIdRelatorio}/itens-orcamento`);
-    const itens = resOrc.data; // ✅ DECLARAÇÃO CORRETA AQUI
+    const itens = resOrc.data;
 
     const resReal = await axios.get(`https://erp-minhas-obras-backend.onrender.com/relatorios/obra/  ${obraIdRelatorio}/realizado-por-item`);
-
-    // Agora "itens" existe!
-    console.log('Itens do orçamento (do frontend):', itens.map((i: any) => ({ id: i.id, nivel: i.nivel, descricao: i.descricao })));
-    console.log('Realizado recebido (do backend):', resReal.data);
 
     const realizadoMap = new Map<number, number>();
     resReal.data.forEach((r: any) => {
@@ -249,7 +345,7 @@ useEffect(() => {
                   <FiArrowLeft className="mr-1 w-4 h-4" /> Voltar
                 </button>
                 <button
-                  onClick={() => window.open(`https://erp-minhas-obras-backend.onrender.com/relatorios/obra/  ${obraIdRelatorio}/orcado-x-realizado/pdf`, '_blank')}
+                  onClick={handleExportarPDF}
                   className="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700"
                 >
                   Exportar PDF
@@ -293,7 +389,7 @@ useEffect(() => {
                     ? ((item.realizado / item.total_item) * 100)
                     : 0;
                   const isServico = item.nivel === 'servico';
-                  const isBold = !isServico; // Local, Etapa, Subetapa → negrito
+                  const isBold = !isServico;
 
                   return (
                     <tr key={item.id} className={isServico ? 'bg-white' : 'bg-gray-50'}>
