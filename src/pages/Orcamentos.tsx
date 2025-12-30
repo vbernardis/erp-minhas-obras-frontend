@@ -6,6 +6,8 @@ import { hasPermission } from '../utils/permissions';
 import * as XLSX from 'xlsx';
 import API_BASE from '../api/config';
 import axios from 'axios';
+import { jsPDF } from 'jspdf'; // ✅ Nova importação
+import autoTable from 'jspdf-autotable'; // ✅ Nova importação
 
 type Obra = {
   id: number;
@@ -314,25 +316,24 @@ export default function Orcamentos() {
   const codigosMap: Record<number, string> = {};
   let contadorLocal = 0;
   const contadorEtapa: Record<number, number> = {};
-  const contadorSubetapa: Record<string, Record<string, number>> = {}; // ✅ Corrigido: agora é objeto de objetos
+  const contadorSubetapa: Record<string, Record<string, number>> = {};
 
   itens.forEach((item, idx) => {
     if (item.nivel === 'local') {
       contadorLocal++;
       codigosMap[idx] = String(contadorLocal).padStart(2, '0');
       contadorEtapa[contadorLocal] = 0;
-      contadorSubetapa[contadorLocal] = {}; // ✅ Agora isso é válido
+      contadorSubetapa[contadorLocal] = {};
     } else if (item.nivel === 'etapa') {
       contadorEtapa[contadorLocal]++;
       const etapaSeq = contadorEtapa[contadorLocal];
       codigosMap[idx] = `${String(contadorLocal).padStart(2, '0')}.${String(etapaSeq).padStart(2, '0')}`;
-      contadorSubetapa[contadorLocal][etapaSeq] = 0; // ✅ Inicializa contador de subetapas para esta etapa
+      contadorSubetapa[contadorLocal][etapaSeq] = 0;
     } else if (item.nivel === 'subetapa') {
       const localId = contadorLocal;
       const etapaId = contadorEtapa[localId] || 1;
       const key = `${localId}-${etapaId}`;
       
-      // Garantir que o contador da subetapa existe
       if (!contadorSubetapa[localId]) contadorSubetapa[localId] = {};
       if (contadorSubetapa[localId][etapaId] === undefined) {
         contadorSubetapa[localId][etapaId] = 0;
@@ -342,7 +343,6 @@ export default function Orcamentos() {
       const subSeq = contadorSubetapa[localId][etapaId];
       codigosMap[idx] = `${String(localId).padStart(2, '0')}.${String(etapaId).padStart(2, '0')}.${String(subSeq).padStart(2, '0')}`;
     } else if (item.nivel === 'servico') {
-      // Encontrar o último nível superior (subetapa ou etapa)
       let parentIdx = -1;
       for (let i = idx - 1; i >= 0; i--) {
         if (itens[i].nivel === 'subetapa' || itens[i].nivel === 'etapa') {
@@ -413,9 +413,121 @@ export default function Orcamentos() {
     }
   };
 
-  const exportarPDF = () => {
-    alert('Após salvar o orçamento, o PDF estará disponível na listagem.');
-  };
+  // ✅ Função corrigida: exportar PDF idêntico ao Excel (sem avisos do TypeScript)
+const exportarPDF = () => {
+  if (itens.length === 0) {
+    alert('Nenhum item para exportar.');
+    return;
+  }
+
+  try {
+    const doc = new jsPDF('landscape', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.width;
+
+    // Título
+    const obraNome = obras.find(o => o.id === obraSelecionada)?.nome || 'Obra não selecionada';
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Orçamento - ${obraNome}`, pageWidth / 2, 15, { align: 'center' });
+
+    doc.setFontSize(10);
+    doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, pageWidth / 2, 22, { align: 'center' });
+
+    // Cabeçalhos
+    const headers = [
+      'Cód.', 'Descrição', 'Und', 'Qtd', 'R$ Unit. Mat.',
+      'R$ Unit. Mão Obra', 'R$ Total Mat.', 'R$ Total Mão Obra', 'R$ Total'
+    ];
+
+    // Dados
+    const tableData = itens.map((item, idx) => {
+      const isServico = item.nivel === 'servico';
+      const qtd = item.quantidade != null ? item.quantidade : 0;
+      const matUnit = item.valor_unitario_material != null ? item.valor_unitario_material : 0;
+      const maoUnit = item.valor_unitario_mao_obra != null ? item.valor_unitario_mao_obra : 0;
+      const totalMat = qtd * matUnit;
+      const totalMao = qtd * maoUnit;
+      const total = totalMat + totalMao;
+
+      return [
+        codigos[idx] || '',
+        item.descricao || '',
+        isServico ? (item.unidade || '—') : '',
+        isServico ? (item.quantidade != null ? item.quantidade.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '—') : '',
+        isServico ? formatarMoeda(matUnit) : '',
+        isServico ? formatarMoeda(maoUnit) : '',
+        isServico ? formatarMoeda(totalMat) : '',
+        isServico ? formatarMoeda(totalMao) : '',
+        isServico ? formatarMoeda(total) : ''
+      ];
+    });
+
+    // Estilo para não-serviços (negrito)
+    const getRowStyle = (rowIndex: number) => {
+      const item = itens[rowIndex];
+      if (!item || item.nivel === 'servico') return {};
+      return { fontStyle: 'bold' };
+    };
+
+    // Tabela
+    autoTable(doc, {
+      startY: 30,
+      head: [headers],
+      body: tableData,
+      theme: 'grid',
+      headStyles: {
+        fillColor: [30, 58, 138],
+        textColor: [255, 255, 255],
+        fontSize: 8,
+        valign: 'middle'
+      },
+      bodyStyles: {
+        fontSize: 7,
+        cellPadding: 2,
+        valign: 'middle'
+      },
+      columnStyles: {
+        0: { cellWidth: 20, halign: 'center' },
+        1: { cellWidth: 60 },
+        2: { cellWidth: 15, halign: 'center' },
+        3: { cellWidth: 20, halign: 'right' },
+        4: { cellWidth: 25, halign: 'right' },
+        5: { cellWidth: 28, halign: 'right' },
+        6: { cellWidth: 25, halign: 'right' },
+        7: { cellWidth: 25, halign: 'right' },
+        8: { cellWidth: 25, halign: 'right' }
+      },
+      didParseCell: (hookData: any) => {
+        if (hookData.section === 'body') {
+          const style = getRowStyle(hookData.row.index);
+          if (style.fontStyle) {
+            hookData.cell.styles.fontStyle = style.fontStyle;
+          }
+        }
+      },
+      styles: {
+        overflow: 'linebreak',
+        cellWidth: 'wrap'
+      }
+    });
+
+    // Totais no rodapé
+    const finalY = (autoTable as any).previous.finalY + 10;
+    if (finalY < doc.internal.pageSize.height - 30) {
+      doc.setFontSize(10);
+      doc.text(`Subtotal: ${formatarMoeda(subtotal)}`, 148.5, finalY, { align: 'right' });
+      const bdi = subtotal * (taxaAdministracao / 100);
+      doc.text(`BDI (${taxaAdministracao}%): ${formatarMoeda(bdi)}`, 148.5, finalY + 5, { align: 'right' });
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Total: ${formatarMoeda(valorTotal)}`, 148.5, finalY + 10, { align: 'right' });
+    }
+
+    doc.save(`orcamento-${obraNome.replace(/\s+/g, '-')}.pdf`);
+  } catch (err) {
+    console.error('Erro ao gerar PDF do orçamento:', err);
+    alert('Erro ao gerar PDF. Verifique o console.');
+  }
+};
 
   const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -661,7 +773,6 @@ export default function Orcamentos() {
           </thead>
           <tbody className="bg-gray-50">
             {itens.map((item, idx) => {
-              // Determina o nível do item anterior (para hierarquia visual clara)
               let nivelAnterior: 'local' | 'etapa' | 'subetapa' | 'servico' | null = null;
               if (idx > 0) {
                 nivelAnterior = itens[idx - 1].nivel;

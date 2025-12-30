@@ -3,6 +3,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 import { hasPermission } from '../utils/permissions';
+import axios from 'axios';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 type Orcamento = {
   id: number;
@@ -13,58 +16,207 @@ type Orcamento = {
   created_at: string;
 };
 
+// Função para formatar moeda
+const formatarMoeda = (valor: number): string => {
+  return valor.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+};
+
 export default function ListaOrcamentos() {
   const navigate = useNavigate();
-  const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]); // ✅ Nome original restaurado
+  const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
 
-  const handleCopiarOrcamento = async (orcamentoId: number) => {
+  // ✅ Função para exportar PDF de um orçamento salvo
+ const exportarPDFOrcamento = async (orcamentoId: number, nomeObra: string) => {
   try {
-    // 1. Buscar lista de obras para seleção
-    const resObras = await api.get('/obras');
-    const obras = resObras.data;
+    const res = await axios.get(`https://erp-minhas-obras-backend.onrender.com/orcamentos/${orcamentoId}`);
+    const orcamento = res.data;
+    const { itens, taxa_administracao, valor_total } = orcamento;
+    const subtotal = valor_total / (1 + (taxa_administracao / 100));
 
-    const selecionada = prompt(
-      'Digite o ID da obra de destino:\n' + 
-      obras.map((o: any) => `${o.id} - ${o.nome}`).join('\n')
-    );
+    // Gerar códigos hierárquicos
+    const codigos: Record<number, string> = {};
+    let contadorLocal = 0;
+    const contadorEtapa: Record<number, number> = {};
+    const contadorSubetapa: Record<string, Record<string, number>> = {};
 
-    if (!selecionada || !obras.some((o: any) => o.id === Number(selecionada))) {
-      alert('Obra inválida.');
-      return;
-    }
-
-    const obraIdDestino = Number(selecionada);
-
-    // 2. Carregar o orçamento original COMPLETO (usando sua rota que já funciona)
-    const resOrcamento = await api.get(`/orcamentos/${orcamentoId}`);
-    const orcamentoOriginal = resOrcamento.data;
-
-    // 3. Extrair os itens no formato que sua rota de criação espera
-    const itensFormatados = orcamentoOriginal.itens.map((item: any) => ({
-      nivel: item.nivel,
-      descricao: item.descricao,
-      unidade: item.unidade,
-      quantidade: item.quantidade,
-      valor_unitario_material: item.valor_unitario_material,
-      valor_unitario_mao_obra: item.valor_unitario_mao_obra
-    }));
-
-    // 4. Enviar para sua rota de CRIAÇÃO existente (que já funciona!)
-    const resposta = await api.post('/orcamentos', {
-      obra_id: obraIdDestino,
-      data_base: orcamentoOriginal.data_base,
-      taxa_administracao: orcamentoOriginal.taxa_administracao,
-      status: 'Em desenvolvimento',
-      itens: itensFormatados
+    itens.forEach((item: any, idx: number) => {
+      if (item.nivel === 'local') {
+        contadorLocal++;
+        codigos[idx] = String(contadorLocal).padStart(2, '0');
+        contadorEtapa[contadorLocal] = 0;
+        contadorSubetapa[contadorLocal] = {};
+      } else if (item.nivel === 'etapa') {
+        contadorEtapa[contadorLocal]++;
+        const etapaSeq = contadorEtapa[contadorLocal];
+        codigos[idx] = `${String(contadorLocal).padStart(2, '0')}.${String(etapaSeq).padStart(2, '0')}`;
+        contadorSubetapa[contadorLocal][etapaSeq] = 0;
+      } else if (item.nivel === 'subetapa') {
+        const localId = contadorLocal;
+        const etapaId = contadorEtapa[localId] || 1;
+        if (!contadorSubetapa[localId]) contadorSubetapa[localId] = {};
+        if (contadorSubetapa[localId][etapaId] === undefined) {
+          contadorSubetapa[localId][etapaId] = 0;
+        }
+        contadorSubetapa[localId][etapaId]++;
+        const subSeq = contadorSubetapa[localId][etapaId];
+        codigos[idx] = `${String(localId).padStart(2, '0')}.${String(etapaId).padStart(2, '0')}.${String(subSeq).padStart(2, '0')}`;
+      } else if (item.nivel === 'servico') {
+        let parentIdx = -1;
+        for (let i = idx - 1; i >= 0; i--) {
+          if (itens[i].nivel === 'subetapa' || itens[i].nivel === 'etapa') {
+            parentIdx = i;
+            break;
+          }
+        }
+        const parentCodigo = parentIdx >= 0 ? codigos[parentIdx] : '00.00.00';
+        const servicosAnt = itens
+          .slice(0, idx)
+          .filter((i: any, iIdx: number) => i.nivel === 'servico' && codigos[iIdx]?.startsWith(parentCodigo)).length;
+        codigos[idx] = `${parentCodigo}.${String(servicosAnt + 1).padStart(2, '0')}`;
+      }
     });
 
-    alert('Orçamento copiado com sucesso!');
-    navigate(`/orcamentos/editar/${resposta.data.id}`);
+    const doc = new jsPDF('landscape', 'mm', 'a4');
+    const margin = 10; // 5mm esquerda + 5mm direita
+    const contentWidth = 297 - margin; // A4 landscape = 297mm
+
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Orçamento - ${nomeObra}`, 297 / 2, 15, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 297 / 2, 22, { align: 'center' });
+
+    const headers = [
+      'Cód.', 'Descrição', 'Und', 'Qtd', 'R$ Unit. Mat.',
+      'R$ Unit. Mão Obra', 'R$ Total Mat.', 'R$ Total Mão Obra', 'R$ Total'
+    ];
+
+    const tableData = itens.map((item: any, idx: number) => {
+      const isServico = item.nivel === 'servico';
+      const qtd = item.quantidade != null ? item.quantidade : 0;
+      const matUnit = item.valor_unitario_material != null ? item.valor_unitario_material : 0;
+      const maoUnit = item.valor_unitario_mao_obra != null ? item.valor_unitario_mao_obra : 0;
+      const totalMat = qtd * matUnit;
+      const totalMao = qtd * maoUnit;
+      const total = totalMat + totalMao;
+
+      return [
+        codigos[idx] || '',
+        item.descricao || '',
+        isServico ? (item.unidade || '—') : '',
+        isServico ? (item.quantidade != null ? item.quantidade.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '—') : '',
+        isServico ? formatarMoeda(matUnit) : '',
+        isServico ? formatarMoeda(maoUnit) : '',
+        isServico ? formatarMoeda(totalMat) : '',
+        isServico ? formatarMoeda(totalMao) : '',
+        isServico ? formatarMoeda(total) : ''
+      ];
+    });
+
+    const getRowStyle = (rowIndex: number) => {
+      const item = itens[rowIndex];
+      if (!item || item.nivel === 'servico') return {};
+      return { fontStyle: 'bold' };
+    };
+
+    // ✅ Larguras que cabem em 287mm
+    const colWidths = [16, 70, 18, 20, 26, 30, 26, 26, 26]; // total = 278mm
+    const columnStyles: Record<number, any> = {};
+    colWidths.forEach((w, i) => {
+      columnStyles[i] = { 
+        cellWidth: w, 
+        halign: i === 0 ? 'center' : (i >= 1 && i <= 2 ? 'left' : 'right') 
+      };
+    });
+
+    autoTable(doc, {
+      startY: 30,
+      head: [headers],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontSize: 8 },
+      bodyStyles: { fontSize: 7, cellPadding: 2 },
+      columnStyles,
+      tableWidth: contentWidth,
+      didParseCell: (hookData: any) => {
+        if (hookData.section === 'body') {
+          const style = getRowStyle(hookData.row.index);
+          if (style.fontStyle) {
+            hookData.cell.styles.fontStyle = style.fontStyle;
+          }
+        }
+      }
+    });
+
+    // ✅ POSICIONAR TOTAIS LOGO ABAIXO DA TABELA
+    const tableInstance = (doc as any).lastAutoTable;
+    const finalY = tableInstance?.finalY ? tableInstance.finalY + 8 : 280; // 8mm de espaço
+
+    // ✅ ALINHAR À DIREITA DA ÚLTIMA COLUNA
+    const totalX = 5 + colWidths.reduce((sum, w) => sum + w, 0); // 5mm margem esquerda + soma colunas
+
+    doc.setFontSize(10);
+    doc.text(`Subtotal: ${formatarMoeda(subtotal)}`, totalX, finalY, { align: 'right' });
+    const bdi = subtotal * (taxa_administracao / 100);
+    doc.text(`BDI (${taxa_administracao}%): ${formatarMoeda(bdi)}`, totalX, finalY + 6, { align: 'right' });
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Total: ${formatarMoeda(valor_total)}`, totalX, finalY + 12, { align: 'right' });
+
+    doc.save(`orcamento-${nomeObra.replace(/\s+/g, '-')}.pdf`);
   } catch (err) {
-    console.error('Erro ao copiar orçamento:', err);
-    alert('Erro ao copiar orçamento. Verifique se o orçamento original está acessível.');
+    console.error('Erro ao gerar PDF:', err);
+    alert('Erro ao gerar PDF. Verifique o console.');
   }
 };
+
+  const handleCopiarOrcamento = async (orcamentoId: number) => {
+    try {
+      const resObras = await api.get('/obras');
+      const obras = resObras.data;
+
+      const selecionada = prompt(
+        'Digite o ID da obra de destino:\n' + 
+        obras.map((o: any) => `${o.id} - ${o.nome}`).join('\n')
+      );
+
+      if (!selecionada || !obras.some((o: any) => o.id === Number(selecionada))) {
+        alert('Obra inválida.');
+        return;
+      }
+
+      const obraIdDestino = Number(selecionada);
+      const resOrcamento = await api.get(`/orcamentos/${orcamentoId}`);
+      const orcamentoOriginal = resOrcamento.data;
+
+      const itensFormatados = orcamentoOriginal.itens.map((item: any) => ({
+        nivel: item.nivel,
+        descricao: item.descricao,
+        unidade: item.unidade,
+        quantidade: item.quantidade,
+        valor_unitario_material: item.valor_unitario_material,
+        valor_unitario_mao_obra: item.valor_unitario_mao_obra
+      }));
+
+      const resposta = await api.post('/orcamentos', {
+        obra_id: obraIdDestino,
+        data_base: orcamentoOriginal.data_base,
+        taxa_administracao: orcamentoOriginal.taxa_administracao,
+        status: 'Em desenvolvimento',
+        itens: itensFormatados
+      });
+
+      alert('Orçamento copiado com sucesso!');
+      navigate(`/orcamentos/editar/${resposta.data.id}`);
+    } catch (err) {
+      console.error('Erro ao copiar orçamento:', err);
+      alert('Erro ao copiar orçamento. Verifique se o orçamento original está acessível.');
+    }
+  };
 
   useEffect(() => {
     if (!hasPermission('orcamentos:read')) {
@@ -77,20 +229,16 @@ export default function ListaOrcamentos() {
   const carregarOrcamentos = async () => {
     try {
       const res = await api.get('/orcamentos');
-      setOrcamentos(res.data); // ✅ Usa o nome correto
+      setOrcamentos(res.data);
     } catch (err) {
       alert('Erro ao carregar orçamentos.');
     }
   };
 
-  const formatarMoeda = (valor: number) =>
-    valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
   return (
     <div className="relative">
-      {/* Botão "Voltar" posicionado no canto superior direito, com margem */}
       <button
-        onClick={() => navigate('/')} // ou '/dashboard', conforme sua rota
+        onClick={() => navigate('/')}
         className="absolute top-4 right-4 px-4 py-2 bg-gray-600 text-white text-sm rounded hover:bg-gray-700 shadow"
       >
         ← Voltar
@@ -135,15 +283,15 @@ export default function ListaOrcamentos() {
                       <span className="text-gray-500 text-xs">Aprovado</span>
                     )}
 
-                    <a
-                      href={`https://erp-minhas-obras-backend.onrender.com/orcamentos/${orc.id}/pdf`}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    {/* ✅ BOTÃO DE PDF ATUALIZADO */}
+                    <button
+                      onClick={() => exportarPDFOrcamento(orc.id, orc.obras?.nome || 'Obra')}
                       className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 ml-2"
                     >
                       PDF
-                    </a>
+                    </button>
 
+                    {/* Excel ainda opera via backend */}
                     <a
                       href={`https://erp-minhas-obras-backend.onrender.com/orcamentos/${orc.id}/excel`}
                       target="_blank"
@@ -153,9 +301,8 @@ export default function ListaOrcamentos() {
                       Excel
                     </a>
 
-                    {/* ✅ Botão Copiar — posicionado corretamente */}
                     <button
-                      onClick={() => handleCopiarOrcamento(orc.id)} // ✅ usa "orc.id", não "orcamento.id"
+                      onClick={() => handleCopiarOrcamento(orc.id)}
                       className="px-3 py-1 bg-orange-600 text-white text-xs rounded hover:bg-orange-700 ml-2"
                       title="Copiar para outra obra"
                     >
@@ -163,7 +310,6 @@ export default function ListaOrcamentos() {
                     </button>
                   </>
 
-                  {/* ✅ Botão Excluir — APENAS se tiver permissão */}
                   {hasPermission('orcamentos:write') && (
                     <button
                       onClick={async () => {

@@ -5,6 +5,9 @@ import { hasPermission } from '../utils/permissions';
 import { FiPlus, FiRefreshCw, FiEdit2, FiTrash, FiFileText, FiDownload } from 'react-icons/fi';
 import { createClient } from '@supabase/supabase-js';
 import MapaChuvas from '../pages/MapaChuvas';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+
 
 // ✅ Função para obter o nome do usuário logado
 const getUsuarioLogado = () => {
@@ -28,7 +31,7 @@ const supabase = createClient(
 interface DiarioObra {
   id: number;
   obra_id: number;
-  data: string;
+  data: string; // ✅ Campo essencial para o PDF
   atividades: string[];
   observacoes: string;
   turnos: {
@@ -36,16 +39,26 @@ interface DiarioObra {
     tarde: string;
     noite: string;
   };
-  efetivos: string[]; // era "equipes"
+  efetivos: string[];
   imagens: string[];
   status: string;
   created_at: string;
-  elaborado_por?: string; // ✅ Corrigido
+  elaborado_por?: string;
+  dias_improdutivos?: number[];
 }
 
 interface Obra {
   id: number;
   nome: string;
+  endereco?: string;
+  "A R T"?: string | null;
+  cno?: string | null;
+  eng_responsavel?: string;
+  proprietario?: string;
+  data_inicio?: string | null;
+  previsao_termino?: string | null;
+  valor_previsto?: number;
+  valor_realizado?: number;
 }
 
 export default function Diario() {
@@ -314,35 +327,392 @@ if (imagens.length > 0) {
     }
   };
 
-  const handleExportPDF = async (id: number) => {
-    try {
-      const resposta = await axios.get(`https://erp-minhas-obras-backend.onrender.com/diarios-obras/${id}/pdf`, {
-        responseType: 'arraybuffer'
-      });
-      
-      if (!resposta.data || resposta.data.byteLength === 0) {
-        alert('PDF vazio. Verifique os dados do diário.');
-        return;
-      }
-      
-      const blob = new Blob([resposta.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `diario-obra-${id}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      
-      setTimeout(() => {
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(link);
-      }, 100);
-    } catch (falha: any) {
-      console.error('Erro ao exportar PDF:', falha);
-      alert('Erro ao exportar PDF: ' + falha.message);
-    }
-  };
+// ... dentro do componente Diario ...
 
+  const handleExportPDF = async (id: number) => {
+  try {
+    // 1. Buscar dados do diário
+    const resDiario = await axios.get<DiarioObra>(`https://erp-minhas-obras-backend.onrender.com/diarios-obras/${id}`);
+    const diario = resDiario.data;
+
+    // 2. Buscar obra
+    const resObra = await axios.get<Obra>(`https://erp-minhas-obras-backend.onrender.com/obras/${diario.obra_id}`);
+    const obra = resObra.data;
+
+    // 3. Preparar dados
+    const atividades = Array.isArray(diario.atividades) ? diario.atividades : [];
+    const efetivos = Array.isArray(diario.efetivos) ? diario.efetivos : [];
+    const turnos = diario.turnos || { manha: '', tarde: '', noite: '' };
+    const observacoes = diario.observacoes || '';
+    const status = diario.status || 'Revisar';
+    const dataFormatada = diario.data ? new Date(diario.data).toLocaleDateString('pt-BR') : '—';
+    const elaboradoPor = diario.elaborado_por || '—';
+    
+    // Dados da obra com fallbacks
+    const enderecoObra = obra.endereco || '—';
+    const artObra = obra['A R T'] || '—';
+    const cnoObra = obra.cno || '—';
+    const engResp = obra.eng_responsavel || '–';
+    
+    // Dias improdutivos seguros
+    const diasImprodutivos = Array.isArray(diario.dias_improdutivos) 
+      ? diario.dias_improdutivos 
+      : [];
+
+    // 4. Função para gerar SVG do Mapa de Chuvas Circular
+    const gerarSvgCircular = (diasImprodutivos: number[], totalDias: number) => {
+      const r = 140; // raio
+      const cx = 150;
+      const cy = 150;
+      const anguloTotal = 360;
+      const anguloPorDia = anguloTotal / totalDias;
+      const setores = [];
+      for (let i = 0; i < totalDias; i++) {
+        const dia = i + 1;
+        const startAngle = (i * anguloPorDia - 90) * (Math.PI / 180);
+        const endAngle = ((i + 1) * anguloPorDia - 90) * (Math.PI / 180);
+        const x1 = cx + r * Math.cos(startAngle);
+        const y1 = cy + r * Math.sin(startAngle);
+        const x2 = cx + r * Math.cos(endAngle);
+        const y2 = cy + r * Math.sin(endAngle);
+        const cor = diasImprodutivos.includes(dia) ? '#ef4444' : '#10b981'; // vermelho ou verde
+        const textoCor = diasImprodutivos.includes(dia) ? 'white' : 'white';
+        const largeArcFlag = anguloPorDia > 180 ? 1 : 0;
+        const pathData = [
+          `M ${cx} ${cy}`,
+          `L ${x1} ${y1}`,
+          `A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+          'Z'
+        ].join(' ');
+        const textX = cx + (r - 25) * Math.cos((startAngle + endAngle) / 2);
+        const textY = cy + (r - 25) * Math.sin((startAngle + endAngle) / 2);
+        setores.push(`
+          <path d="${pathData}" fill="${cor}" stroke="#e5e7eb" stroke-width="1"/>
+          <text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="bold" fill="${textoCor}">${dia}</text>
+        `);
+      }
+      return `
+        <svg width="300" height="300" viewBox="0 0 300 300" style="margin: 10px auto;">
+          ${setores.join('')}
+        </svg>
+      `;
+    };
+
+    // Calcular total de dias do mês
+    const totalDiasMes = diario.data 
+      ? new Date(parseInt(diario.data.substring(0, 4)), parseInt(diario.data.substring(5, 7)), 0).getDate()
+      : 30;
+
+    // 5. Criar elemento temporário
+    const printArea = document.createElement('div');
+    printArea.style.width = '210mm';
+    printArea.style.padding = '15mm';
+    printArea.style.boxSizing = 'border-box';
+    printArea.style.fontFamily = 'Arial, sans-serif';
+    printArea.style.fontSize = '10pt';
+    printArea.style.color = '#333';
+    printArea.innerHTML = `
+      <div style="text-align:center; margin-bottom:20px; padding-bottom:15px; border-bottom:3px solid #1e40af;">
+        <h1 style="font-size:18pt; margin:5px 0; color:#1e3a8a; font-weight:700;">ERP MINHAS OBRAS</h1>
+      </div>
+      <div style="text-align:center; font-weight:bold; font-size:14pt; margin:20px 0 25px; color:#1e3a8a; text-decoration:underline;">
+        RELATÓRIO DIÁRIO DE OBRA (RDO)
+      </div>
+      
+      <div style="margin:18px 0;">
+        <strong>OBRA:</strong> ${obra.nome}<br>
+        <strong>ENDEREÇO:</strong> ${enderecoObra}<br>
+        <strong>ART:</strong> ${artObra}<br>
+        <strong>CNO:</strong> ${cnoObra}<br>
+        <strong>RESP. TÉCNICO:</strong> ${engResp}<br>
+        <strong>DATA:</strong> ${dataFormatada}
+      </div>
+
+      <div style="margin:18px 0;">
+  <div style="font-weight:bold; margin-bottom:10px; font-size:11pt; color:#1e3a8a;">• MAPA DE CHUVAS</div>
+  <table style="width:100%; border-collapse:collapse; margin-top:6px;">
+    <thead>
+      <tr>
+        <th style="border:1px solid #cbd5e1; padding:8px; background-color:#dbeafe; font-weight:bold; color:#1e40af;">Dias Improdutivos (Chuvosos)</th>
+        <th style="border:1px solid #cbd5e1; padding:8px; background-color:#dbeafe; font-weight:bold; color:#1e40af;">Total de Dias Úteis</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="border:1px solid #cbd5e1; padding:8px;">
+          ${(diasImprodutivos.length > 0
+            ? diasImprodutivos.map(d => d.toString().padStart(2, '0')).join(', ')
+            : 'Nenhum')}
+        </td>
+        <td style="border:1px solid #cbd5e1; padding:8px;">
+          ${(function() {
+            if (!diario.data) return '—';
+            const ano = parseInt(diario.data.substring(0, 4), 10);
+            const mes = parseInt(diario.data.substring(5, 7), 10) - 1;
+            const totalDias = new Date(ano, mes + 1, 0).getDate();
+            const diasUteis = totalDias - diasImprodutivos.length;
+            return `${diasUteis} / ${totalDias}`;
+          })()}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+      <div style="margin:18px 0;">
+        <div style="font-weight:bold; margin-bottom:10px; font-size:11pt; color:#1e3a8a;">• TURNOS</div>
+        <div style="background:white; border:1px solid #94a3b8; border-radius:6px; padding:10px; margin:8px 0; min-height:30px; font-size:9.5pt;">
+          <strong>Manhã:</strong> ${turnos.manha || '—'}
+        </div>
+        <div style="background:white; border:1px solid #94a3b8; border-radius:6px; padding:10px; margin:8px 0; min-height:30px; font-size:9.5pt;">
+          <strong>Tarde:</strong> ${turnos.tarde || '—'}
+        </div>
+        <div style="background:white; border:1px solid #94a3b8; border-radius:6px; padding:10px; margin:8px 0; min-height:30px; font-size:9.5pt;">
+          <strong>Noite:</strong> ${turnos.noite || '—'}
+        </div>
+      </div>
+
+      <div style="margin:18px 0;">
+        <div style="font-weight:bold; margin-bottom:10px; font-size:11pt; color:#1e3a8a;">• EQUIPES (EFETIVOS)</div>
+        <table style="width:100%; border-collapse:collapse; margin-top:6px;">
+          <thead><tr><th style="border:1px solid #cbd5e1; padding:8px; background-color:#dbeafe; font-weight:bold; color:#1e40af;">Função / Nome</th></tr></thead>
+          <tbody>
+            ${(efetivos.length > 0 ? efetivos.map(e => `<tr><td style="border:1px solid #cbd5e1; padding:8px;">${e}</td></tr>`).join('') : '<tr><td style="border:1px solid #cbd5e1; padding:8px;">—</td></tr>')}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="margin:18px 0;">
+        <div style="font-weight:bold; margin-bottom:10px; font-size:11pt; color:#1e3a8a;">• TAREFAS REALIZADAS</div>
+        <table style="width:100%; border-collapse:collapse; margin-top:6px;">
+          <thead><tr><th style="border:1px solid #cbd5e1; padding:8px; background-color:#dbeafe; font-weight:bold; color:#1e40af;">Descrição</th></tr></thead>
+          <tbody>
+            ${(atividades.length > 0 ? atividades.map(a => `<tr><td style="border:1px solid #cbd5e1; padding:8px;">${a}</td></tr>`).join('') : '<tr><td style="border:1px solid #cbd5e1; padding:8px;">—</td></tr>')}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="margin:18px 0;">
+        <div style="font-weight:bold; margin-bottom:10px; font-size:11pt; color:#1e3a8a;">• OCORRÊNCIAS</div>
+        <table style="width:100%; border-collapse:collapse; margin-top:6px;">
+          <thead><tr><th style="border:1px solid #cbd5e1; padding:8px; background-color:#dbeafe; font-weight:bold; color:#1e40af;">Descrição</th></tr></thead>
+          <tbody>
+            <tr><td style="border:1px solid #cbd5e1; padding:8px;">${observacoes || '—'}</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="margin:18px 0;">
+        <div style="font-weight:bold; margin-bottom:10px; font-size:11pt; color:#1e3a8a;">• ELABORADO POR</div>
+        <p><strong>Usuário:</strong> ${elaboradoPor}</p>
+      </div>
+
+      ${(Array.isArray(diario.imagens) && diario.imagens.length > 0) ? `
+        <div style="margin-top:25px; page-break-before:always;">
+          <div style="font-weight:bold; margin-bottom:10px; font-size:11pt; color:#1e3a8a; page-break-after:avoid;">• IMAGENS DA OBRA</div>
+          <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:20px;">
+            ${diario.imagens.map(url => url ? `<div style="width:calc((210mm - 30mm - 24px) / 3); height:80mm; display:flex; justify-content:center; align-items:center; box-sizing:border-box;">
+              <img src="${url}" alt="Imagem da Obra" style="max-width:100%; max-height:100%; object-fit:contain; border:1px solid #ddd; border-radius:4px;">
+            </div>` : '').join('')}
+          </div>
+        </div>
+      ` : `
+        <div style="margin-top:25px;">
+          <div style="font-weight:bold; margin-bottom:10px; font-size:11pt; color:#1e3a8a;">• IMAGENS DA OBRA</div>
+          <p style="color:#64748b; font-style:italic;">Nenhuma imagem anexada.</p>
+        </div>
+      `}
+
+      <div style="text-align:center; font-weight:bold; margin-top:25px; padding:12px; 
+        background-color: ${status === 'Aprovado' ? '#ecfdf5' : status === 'Reprovado' ? '#fef2f2' : '#fffbeb'};
+        border:2px solid ${status === 'Aprovado' ? '#10b981' : status === 'Reprovado' ? '#ef4444' : '#f59e0b'};
+        border-radius:8px; color: ${status === 'Aprovado' ? '#065f46' : status === 'Reprovado' ? '#b91c1c' : '#975a05'};
+        font-size:12pt;">
+        STATUS: ${status.toUpperCase()}
+      </div>
+    `;
+
+    document.body.appendChild(printArea);
+
+    const canvas = await html2canvas(printArea, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      logging: false
+    });
+
+    document.body.removeChild(printArea);
+
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const imgWidth = 210;
+    const pageHeight = 297;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    let heightLeft = imgHeight;
+    let position = 0;
+
+    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+
+    while (heightLeft >= 0) {
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+
+    pdf.save(`diario-obra-${id}.pdf`);
+  } catch (falha: any) {
+    console.error('Erro ao exportar PDF:', falha);
+    alert('Erro ao exportar PDF: ' + (falha.message || 'Verifique o console.'));
+  }
+};
+
+// Função para exportar Mapa de Chuvas como PDF (frontend)
+const exportarMapaChuvasPDF = async () => {
+  if (!filtroObra) {
+    alert('Selecione uma obra nos filtros primeiro.');
+    return;
+  }
+
+  try {
+    const resObra = await axios.get<Obra>(`https://erp-minhas-obras-backend.onrender.com/obras/${filtroObra}`);
+    const obra = resObra.data;
+
+    const hoje = new Date();
+    const mesRef = hoje.toISOString().slice(0, 7);
+    const ano = hoje.getFullYear();
+    const mesNum = hoje.getMonth();
+    const totalDias = new Date(ano, mesNum + 1, 0).getDate();
+
+    const resDiarios = await axios.get<DiarioObra[]>(
+      `https://erp-minhas-obras-backend.onrender.com/diarios-obras?obra_id=${filtroObra}`
+    );
+
+    const todosDiasImprodutivos = new Set<number>();
+    resDiarios.data.forEach((diario) => {
+      if (diario.data?.startsWith(mesRef) && Array.isArray(diario.dias_improdutivos)) {
+        diario.dias_improdutivos.forEach((dia) => {
+          if (typeof dia === 'number' && dia >= 1 && dia <= totalDias) {
+            todosDiasImprodutivos.add(dia);
+          }
+        });
+      }
+    });
+
+    // ✅ SVG com tamanho AUMENTADO
+    const gerarSvg = (diasImprodutivos: Set<number>, totalDias: number) => {
+      const r = 240; // ✅ Aumentado (era 140)
+      const cx = 180; // ✅ Ajustado para centralizar com novo raio
+      const cy = 180;
+      let paths = '';
+      for (let i = 0; i < totalDias; i++) {
+        const dia = i + 1;
+        const startAngle = (i / totalDias) * 360 - 90;
+        const endAngle = ((i + 1) / totalDias) * 360 - 90;
+        const startRad = (startAngle * Math.PI) / 180;
+        const endRad = (endAngle * Math.PI) / 180;
+        const x1 = cx + r * Math.cos(startRad);
+        const y1 = cy + r * Math.sin(startRad);
+        const x2 = cx + r * Math.cos(endRad);
+        const y2 = cy + r * Math.sin(endRad);
+        const largeArc = endAngle - startAngle > 180 ? 1 : 0;
+
+        const fill = diasImprodutivos.has(dia) ? '#3b82f6' : '#ffffff';
+        const textFill = diasImprodutivos.has(dia) ? '#ffffff' : '#000000';
+
+        const pathData = [
+          `M ${cx} ${cy}`,
+          `L ${x1} ${y1}`,
+          `A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`,
+          'Z'
+        ].join(' ');
+
+        const textX = cx + (r - 32) * Math.cos((startRad + endRad) / 2);
+        const textY = cy + (r - 32) * Math.sin((startRad + endRad) / 2);
+
+        paths += `
+          <path d="${pathData}" fill="${fill}" stroke="#e5e7eb" stroke-width="0.5"/>
+          <text x="${textX}" y="${textY}" fill="${textFill}" font-size="16" font-weight="bold" text-anchor="middle" dominant-baseline="middle">${dia}</text>
+        `;
+      }
+      return `<svg width="380" height="380" viewBox="0 0 360 360">${paths}</svg>`;
+    };
+
+    // ✅ HTML com fontes maiores e margens ajustadas
+    const html = `
+      <div style="
+        width: 210mm;
+        min-height: 297mm;
+        padding: 20mm 12mm; /* ✅ menos padding lateral para mais espaço */
+        box-sizing: border-box;
+        font-family: Arial, sans-serif;
+        font-size: 14pt; /* ✅ aumentado */
+        color: #333;
+      ">
+        <div style="text-align: center; margin-bottom: 25px; padding-bottom: 12px; border-bottom: 2px solid #1e40af;">
+          <h1 style="font-size: 20pt; color: #1e3a8a; margin: 0;">MAPA DE CHUVAS</h1>
+          <p style="font-size: 14pt;">${obra.nome} • ${mesRef}</p>
+        </div>
+
+        <div style="
+          display: flex;
+          justify-content: center;
+          align-items: flex-start;
+          margin: 20px 0 30px;
+          min-height: 400px; /* ✅ mais altura */
+        ">
+          ${gerarSvg(todosDiasImprodutivos, totalDias)}
+        </div>
+
+        <div style="
+          background: #f8fafc;
+          border: 1px solid #cbd5e1;
+          border-radius: 8px;
+          padding: 16px;
+          margin: 20px 0;
+          font-size: 14pt; /* ✅ aumentado */
+        ">
+          <p><strong>Período:</strong> ${mesRef}</p>
+          <p><strong>Dias impraticáveis:</strong> ${todosDiasImprodutivos.size > 0 ? Array.from(todosDiasImprodutivos).join(', ') : 'Nenhum'}</p>
+          <p><strong>Dias úteis:</strong> ${totalDias - todosDiasImprodutivos.size} / ${totalDias}</p>
+        </div>
+
+        <div style="
+          text-align: center;
+          margin-top: 30px;
+          color: #64748b;
+          font-size: 12pt; /* ✅ aumentado */
+        ">
+          Relatório gerado automaticamente pelo ERP Minhas Obras
+        </div>
+      </div>
+    `;
+
+    const printDiv = document.createElement('div');
+    printDiv.innerHTML = html;
+    document.body.appendChild(printDiv);
+
+    const canvas = await html2canvas(printDiv, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      logging: false
+    });
+
+    document.body.removeChild(printDiv);
+
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const imgWidth = 210;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+    pdf.save(`mapa-chuvas-${obra.nome.replace(/\s+/g, '-')}-${mesRef}.pdf`);
+  } catch (err) {
+    console.error('Erro ao exportar Mapa de Chuvas:', err);
+    alert('Erro ao gerar PDF. Verifique o console.');
+  }
+};
   const handleViewPDF = (diario: DiarioObra) => {
     navigate(`/diario/${diario.id}`);
   };
@@ -393,17 +763,7 @@ if (imagens.length > 0) {
           </button>
           {/* Botão Exportar Mapa de Chuvas */}
 <button
-  onClick={() => {
-    if (!filtroObra) {
-      alert('Selecione uma obra nos filtros para exportar o Mapa de Chuvas.');
-      return;
-    }
-    const mes = filtroStatus
-      ? new Date().toISOString().slice(0, 7) // ou use um estado de mês, se tiver
-      : new Date().toISOString().slice(0, 7);
-    const url = `https://erp-minhas-obras-backend.onrender.com/mapa-chuvas/pdf?obra_id=${filtroObra}&mes=${mes}`;
-    window.open(url, '_blank');
-  }}
+  onClick={exportarMapaChuvasPDF}
   disabled={!filtroObra}
   className={`flex items-center px-4 py-2 rounded-lg transition ${
     filtroObra
