@@ -147,42 +147,140 @@ useEffect(() => {
     navigate('/relatorios');
   };
 
-  // ✅ Função para exportar Excel real (dados estruturados)
-  const handleExportarExcel = async () => {
-    if (!obraIdRelatorio || itensOrcamento.length === 0) {
-      alert('Nenhum dado para exportar.');
-      return;
-    }
+const handleExportarExcel = () => {
+  if (!obraIdRelatorio || itensOrcamento.length === 0) {
+    alert('Nenhum dado para exportar.');
+    return;
+  }
 
-    try {
-      const worksheetData = itensOrcamento.map((item) => {
-        const isServico = item.nivel === 'servico';
-        const total_item = item.total_item || 0;
-        const realizado = item.realizado || 0;
-        const percentual = total_item > 0 ? ((realizado / total_item) * 100) : 0;
+  const totalOrcado = itensOrcamento.reduce((sum, item) => sum + (item.total_item || 0), 0);
+  const totalRealizado = itensOrcamento.reduce((sum, item) => sum + (item.realizado || 0), 0);
 
-        return {
-          Código: item.codigo || '',
-          Descrição: item.descricao || '',
-          Und: isServico ? (item.unidade || '') : '',
-          Qtd: isServico ? item.quantidade : '',
-          'Vlr Unit. Mat.': isServico ? item.valor_unitario_material : '',
-          'Vlr Unit. Mão Obra': isServico ? item.valor_unitario_mao_obra : '',
-          'Orçado Total': total_item,
-          Realizado: realizado,
-          '% Executado': percentual
-        };
-      });
+  const wb = XLSX.utils.book_new();
+  const ws: XLSX.WorkSheet = {};
 
-      const worksheet = XLSX.utils.json_to_sheet(worksheetData);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Orçado x Realizado');
-      XLSX.writeFile(workbook, `orcado-x-realizado-obra-${obraIdRelatorio}.xlsx`);
-    } catch (err) {
-      console.error('Erro ao exportar Excel:', err);
-      alert('Erro ao gerar arquivo Excel. Verifique o console.');
+  const cabecalho = [
+    'Código', 'Descrição', 'Und', 'Qtd', 'Vlr Unit. Mat.',
+    'Vlr Unit. Mão Obra', 'Orçado Total', 'Realizado', '% Executado'
+  ];
+
+  // --- Cabeçalho com cor ---
+  cabecalho.forEach((text, col) => {
+    const cell = XLSX.utils.encode_cell({ r: 0, c: col });
+    ws[cell] = {
+      v: text,
+      t: 's',
+      s: {
+        font: { bold: true, color: { rgb: 'FFFFFF' }, name: 'Arial', sz: 11 },
+        fill: { fgColor: { rgb: '1E3A8A' } }, // azul escuro
+        alignment: { horizontal: 'center', vertical: 'center' } as any
+      }
+    };
+  });
+
+  // --- Dados ---
+  itensOrcamento.forEach((item, r) => {
+    const row = r + 1;
+    const isServico = item.nivel === 'servico';
+    const bgColor = isServico ? 'FFFFFF' : 'F3F4F6'; // branco ou cinza claro
+    const isBold = !isServico;
+
+    const setCell = (c: number, value: any, isNumber = false, isRealizado = false) => {
+      const cell = XLSX.utils.encode_cell({ r: row, c });
+      const format = (() => {
+        if (!isNumber) return undefined;
+        if (c === 3) return '0.0000'; // Qtd
+        if (c === 8) return '0.00"%"'; // %
+        return '"R$ "#,##0.00'; // demais valores
+      })();
+
+      ws[cell] = {
+        v: isNumber ? (value || 0) : (value || ''),
+        t: isNumber ? 'n' : 's',
+        z: format,
+        s: {
+          font: {
+            name: 'Arial',
+            sz: 10,
+            bold: isBold || isRealizado,
+            ...(isRealizado ? { color: { rgb: '1E40AF' } } : {})
+          },
+          fill: { fgColor: { rgb: bgColor } },
+          alignment: { horizontal: (c >= 3 && c <= 8) ? 'right' : 'left', vertical: 'center' } as any
+        }
+      };
+    };
+
+    setCell(0, item.codigo);
+    setCell(1, item.descricao);
+    setCell(2, isServico ? (item.unidade || '—') : '');
+    setCell(3, isServico ? item.quantidade : null, isServico);
+    setCell(4, isServico ? item.valor_unitario_material : null, isServico);
+    setCell(5, isServico ? item.valor_unitario_mao_obra : null, isServico);
+    setCell(6, item.total_item || 0, true);
+    setCell(7, item.realizado || 0, true, true); // ← Realizado em azul
+    setCell(8, item.total_item > 0 ? (item.realizado / item.total_item) * 100 : null, true);
+  });
+
+  // --- Linha de total ---
+  const totalRow = itensOrcamento.length + 1;
+  const setTotal = (c: number, value: any, isNumber = false, isRealizado = false) => {
+    const cell = XLSX.utils.encode_cell({ r: totalRow, c });
+    ws[cell] = {
+      v: value,
+      t: isNumber ? 'n' : 's',
+      z: isNumber ? (c === 8 ? '0.00"%"' : '"R$ "#,##0.00') : undefined,
+      s: {
+        font: {
+          bold: true,
+          name: 'Arial',
+          sz: 10,
+          ...(isRealizado ? { color: { rgb: '1E40AF' } } : {})
+        },
+        fill: { fgColor: { rgb: 'E0F2FE' } }, // azul claro
+        alignment: { horizontal: 'right', vertical: 'center' } as any
+      }
+    };
+  };
+
+  for (let c = 0; c < 5; c++) ws[XLSX.utils.encode_cell({ r: totalRow, c })] = { v: '', t: 's' };
+  ws[XLSX.utils.encode_cell({ r: totalRow, c: 5 })] = { 
+    v: 'TOTAL GERAL:', 
+    t: 's',
+    s: { 
+      font: { bold: true, name: 'Arial', sz: 10 },
+      fill: { fgColor: { rgb: 'E0F2FE' } },
+      alignment: { horizontal: 'right', vertical: 'center' } as any
     }
   };
+  setTotal(6, totalOrcado, true);
+  setTotal(7, totalRealizado, true, true);
+  setTotal(8, totalOrcado > 0 ? (totalRealizado / totalOrcado) * 100 : 0, true);
+
+  // --- Finalizar ---
+  const range = XLSX.utils.decode_range('A1:I1');
+  range.e.r = totalRow;
+  range.e.c = 8;
+  ws['!ref'] = XLSX.utils.encode_range(range);
+  ws['!cols'] = [
+    { wch: 12 }, { wch: 40 }, { wch: 8 }, { wch: 10 },
+    { wch: 15 }, { wch: 17 }, { wch: 15 }, { wch: 15 }, { wch: 13 }
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Orçado x Realizado');
+  
+  // ✅ Forçar saída com suporte a estilo
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
+  const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `orcado-x-realizado-obra-${obraNome.replace(/\s+/g, '-')}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
 
   // ✅ Função para exportar PDF real (corrigida para autoTable)
 const handleExportarPDF = () => {
