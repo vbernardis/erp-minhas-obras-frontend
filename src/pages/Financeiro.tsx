@@ -4,6 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { FiFileText, FiPlus, FiArrowLeft, FiTrash, FiEdit2 } from 'react-icons/fi';
 import { hasPermission } from '../utils/permissions';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+// @ts-ignore
+import 'jspdf-autotable';
 
 const formatarDataBR = (dataISO: string | null | undefined): string => {
   if (!dataISO) return '—';
@@ -88,10 +92,85 @@ export default function Financeiro() {
     ? notas.filter(nota => nota.obras?.nome && nota.obras.nome === obras.find(o => o.id === obraFiltro)?.nome)
     : notas;
 
-  const exportarPDFLista = () => {
-    const params = obraFiltro ? `?obra_id=${obraFiltro}` : '';
-    window.open(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/pdf/lista${params}`, '_blank');
-  };
+  // ✅ Função para exportar PDF da lista de notas (frontend)
+const exportarPDFLista = () => {
+  if (notasFiltradas.length === 0) {
+    alert('Nenhuma nota para exportar.');
+    return;
+  }
+
+  const doc = new jsPDF('landscape', 'mm', 'a4');
+  const pageWidth = doc.internal.pageSize.width;
+
+  // Cabeçalho
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('ERP MINHAS OBRAS', pageWidth / 2, 15, { align: 'center' });
+
+  doc.setFontSize(12);
+  doc.text('LISTA DE NOTAS FISCAIS', pageWidth / 2, 25, { align: 'center' });
+
+  const obraNome = obraFiltro
+    ? (obras.find(o => o.id === obraFiltro)?.nome || 'Todas as obras')
+    : 'Todas as obras';
+  
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Obra: ${obraNome}`, 20, 35);
+
+  // Dados
+  const tableData = notasFiltradas.map(nota => [
+    nota.numero_nota,
+    nota.obras?.nome || '—',
+    nota.fornecedores?.nome_fantasia || '—',
+    formatarDataBR(nota.data_lancamento),
+    formatarDataBR(nota.data_emissao),
+    formatarDataBR(nota.data_vencimento),
+    `R$ ${formatarMoeda(nota.valor_total)}`,
+    `R$ ${formatarMoeda(nota.valor_pago || 0)}`,
+    nota.status,
+    nota.usuario_lancamento || 'Não informado'
+  ]);
+
+  // Larguras das colunas (total ~277mm)
+  const colWidths = [22, 30, 35, 22, 22, 22, 28, 28, 22, 32];
+
+  // @ts-ignore
+  (doc as any).autoTable({
+    startY: 42,
+    head: [['NF', 'Obra', 'Fornecedor', 'Lançamento', 'Emissão', 'Vencimento', 'Valor Total', 'Valor Pago', 'Status', 'Usuário']],
+    body: tableData,
+    theme: 'grid',
+    headStyles: { 
+      fillColor: [43, 108, 176], 
+      textColor: [255, 255, 255],
+      fontSize: 9 
+    },
+    bodyStyles: { 
+      fontSize: 8,
+      cellPadding: 1.5
+    },
+columnStyles: colWidths.reduce((acc, width, index) => {
+  acc[index] = { cellWidth: width };
+  if ([6, 7].includes(index)) acc[index].halign = 'right';
+  if ([3, 4, 5].includes(index)) acc[index].halign = 'center';
+  return acc;
+}, {} as Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }>),
+    styles: { 
+      overflow: 'linebreak', 
+      cellWidth: 'wrap',
+      font: 'helvetica'
+    }
+  });
+
+  // Rodapé
+  // @ts-ignore
+  const finalY = (doc as any).lastAutoTable?.finalY || 280;
+  doc.setFontSize(9);
+  doc.text(`Relatório gerado em: ${new Date().toLocaleDateString('pt-BR')}`, pageWidth / 2, finalY + 10, { align: 'center' });
+
+  doc.save(`lista-notas-fiscais-${obraNome.replace(/\s+/g, '-')}.pdf`);
+};
 
   const handleDelete = async (id: number) => {
     const nota = notas.find(n => n.id === id);
