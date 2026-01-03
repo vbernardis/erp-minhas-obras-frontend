@@ -20,6 +20,19 @@ interface ServicoOrcamento {
   descricao: string;
 }
 
+// ✅ Nova interface para Pedido de Compra
+interface PedidoCompra {
+  id: number;
+  codigo: string;
+  itens: {
+    descricao: string;
+    unidade: string;
+    quantidade: number;
+    valor_unitario: number;
+    impostos: number;
+  }[];
+}
+
 interface ItemNota {
   id: number;
   descricao: string;
@@ -31,18 +44,19 @@ interface ItemNota {
   orcamento_item_id: number | null;
 }
 
-// ✅ Interface atualizada para incluir data_lancamento
+// ✅ Interface atualizada para incluir desconto
 interface NotaFiscalPayload {
   obra_id: number;
   fornecedor_id: number;
   numero_nota: string;
   data_emissao: string;
   data_vencimento: string;
-  data_lancamento: string; // ✅ Campo adicionado
+  data_lancamento: string;
   data_pagamento?: string;
   forma_pagamento?: string;
   frete: number;
-  itens: Omit<ItemNota, 'id' | 'preco_total'>[]; // Omitindo campos não necessários no backend
+  desconto: number; // ✅ Novo campo
+  itens: Omit<ItemNota, 'id' | 'preco_total'>[];
 }
 
 export default function NovaNotaFiscal() {
@@ -51,34 +65,30 @@ export default function NovaNotaFiscal() {
   const [obras, setObras] = useState<Obra[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [servicos, setServicos] = useState<ServicoOrcamento[]>([]);
+  const [pedidos, setPedidos] = useState<PedidoCompra[]>([]); // ✅ Novo estado
 
   const [obraId, setObraId] = useState<number | ''>('');
   const [fornecedorId, setFornecedorId] = useState<number | ''>('');
+  const [pedidoCompraId, setPedidoCompraId] = useState<number | ''>(''); // ✅ Novo estado
   const [numeroNota, setNumeroNota] = useState('');
   const [dataEmissao, setDataEmissao] = useState('');
   const [dataPagamento, setDataPagamento] = useState('');
   const [formaPagamento, setFormaPagamento] = useState<'Boleto' | 'Pix' | 'Depósito' | ''>('');
   const [frete, setFrete] = useState<number>(0);
+  const [desconto, setDesconto] = useState<number>(0); // ✅ Novo estado
 
-  // ✅ Estado para a data de lançamento (fixa no dia atual)
   const [dataLancamento] = useState(() => new Date().toISOString().split('T')[0]);
 
   const [itens, setItens] = useState<ItemNota[]>([
     { id: 1, descricao: '', unidade: '', quantidade: 1, preco_unit: 0, imposto: 0, preco_total: 0, orcamento_item_id: null }
   ]);
 
-  // ✅ Estado para rascunhos dos campos numéricos
   const [valorEmEdicao, setValorEmEdicao] = useState<Record<string, string>>({});
-
   const [loading, setLoading] = useState(true);
-
   const [dataVencimento, setDataVencimento] = useState('');
-
-  // ✅ Estados para anexos
   const [anexoNF, setAnexoNF] = useState<File | null>(null);
   const [anexoBoleto, setAnexoBoleto] = useState<File | null>(null);
 
-  // ✅ Função segura para exibir número com vírgula
   const numeroParaInput = (valor: number | undefined | null): string => {
     if (valor == null || isNaN(valor)) return '';
     return valor.toString().replace('.', ',');
@@ -117,6 +127,41 @@ export default function NovaNotaFiscal() {
     }
   }, [obraId]);
 
+  // ✅ Carregar pedidos quando obra e fornecedor mudam
+  useEffect(() => {
+    if (obraId && fornecedorId) {
+      axios.get<PedidoCompra[]>(`https://erp-minhas-obras-backend.onrender.com/pedidos-compra?obra_id=${obraId}&fornecedor_id=${fornecedorId}&status=solicitado`)
+        .then(res => setPedidos(res.data))
+        .catch(err => {
+          console.error('Erro ao carregar pedidos:', err);
+          setPedidos([]);
+        });
+    } else {
+      setPedidos([]);
+      setPedidoCompraId('');
+    }
+  }, [obraId, fornecedorId]);
+
+  // ✅ Preencher itens ao selecionar pedido
+  useEffect(() => {
+    if (pedidoCompraId) {
+      const pedido = pedidos.find(p => p.id === pedidoCompraId);
+      if (pedido) {
+        const novosItens = pedido.itens.map((item, index) => ({
+          id: Date.now() + index,
+          descricao: item.descricao,
+          unidade: item.unidade,
+          quantidade: item.quantidade,
+          preco_unit: item.valor_unitario,
+          imposto: item.impostos || 0,
+          preco_total: (item.quantidade * item.valor_unitario) + (item.impostos || 0),
+          orcamento_item_id: null
+        }));
+        setItens(novosItens);
+      }
+    }
+  }, [pedidoCompraId, pedidos]);
+
   const adicionarItem = () => {
     setItens([...itens, { 
       id: Date.now(), 
@@ -133,7 +178,6 @@ export default function NovaNotaFiscal() {
   const removerItem = (id: number) => {
     if (itens.length > 1) {
       setItens(itens.filter(item => item.id !== id));
-      // Limpar rascunhos
       setValorEmEdicao(prev => {
         const novo = { ...prev };
         delete novo[`qtd_${id}`];
@@ -148,7 +192,6 @@ export default function NovaNotaFiscal() {
     setItens(itens.map(item => {
       if (item.id === id) {
         const novoItem = { ...item, [campo]: valor };
-        // Recalcular total apenas se for campo numérico
         if (campo === 'quantidade' || campo === 'preco_unit' || campo === 'imposto') {
           const qtd = novoItem.quantidade || 0;
           const unit = novoItem.preco_unit || 0;
@@ -161,18 +204,17 @@ export default function NovaNotaFiscal() {
     }));
   };
 
-  // Exemplo de onde adicionar no arquivo de criação da NF
-const getUsuarioLogado = () => {
-  try {
-    const userStr = localStorage.getItem('user');
-    if (!userStr) return 'Usuário não identificado';
-    const user = JSON.parse(userStr);
-    return user.name || 'Usuário';
-  } catch (e) {
-    console.warn('Erro ao ler usuário', e);
-    return 'Usuário';
-  }
-};
+  const getUsuarioLogado = () => {
+    try {
+      const userStr = localStorage.getItem('user');
+      if (!userStr) return 'Usuário não identificado';
+      const user = JSON.parse(userStr);
+      return user.name || 'Usuário';
+    } catch (e) {
+      console.warn('Erro ao ler usuário', e);
+      return 'Usuário';
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -191,7 +233,6 @@ const getUsuarioLogado = () => {
     const usuarioLogado = getUsuarioLogado();
 
     try {
-      // ✅ Criar FormData apenas se houver arquivos
       if (anexoNF || anexoBoleto) {
         const formData = new FormData();
         formData.append('obra_id', obraId.toString());
@@ -199,7 +240,8 @@ const getUsuarioLogado = () => {
         formData.append('numero_nota', numeroNota);
         formData.append('data_emissao', dataEmissao);
         formData.append('data_vencimento', dataVencimento);
-        formData.append('data_lancamento', dataLancamento); // ✅ Adiciona a data de lançamento
+        formData.append('data_lancamento', dataLancamento);
+        formData.append('desconto', desconto.toString()); // ✅ Adiciona desconto
         if (dataPagamento) formData.append('data_pagamento', dataPagamento);
         if (formaPagamento) formData.append('forma_pagamento', formaPagamento);
         formData.append('frete', frete.toString());
@@ -212,10 +254,7 @@ const getUsuarioLogado = () => {
           preco_total: item.preco_total,
           orcamento_item_id: item.orcamento_item_id
         }))));
-
-        // ✅ Adiciona o campo usuario_lancamento ao formData
         formData.append('usuario_lancamento', usuarioLogado);
-
         if (anexoNF) formData.append('anexo_nota_fiscal', anexoNF);
         if (anexoBoleto) formData.append('anexo_boleto', anexoBoleto);
 
@@ -223,17 +262,17 @@ const getUsuarioLogado = () => {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
       } else {
-        // ✅ Payload para envio sem arquivos
         const payload: NotaFiscalPayload = {
           obra_id: obraId,
           fornecedor_id: fornecedorId,
           numero_nota: numeroNota,
           data_emissao: dataEmissao,
           data_vencimento: dataVencimento,
-          data_lancamento: dataLancamento, // ✅ Inclui a data de lançamento no payload
+          data_lancamento: dataLancamento,
           data_pagamento: dataPagamento || undefined,
           forma_pagamento: formaPagamento || undefined,
           frete: frete || 0,
+          desconto: desconto || 0, // ✅ Inclui desconto
           itens: itens.map(item => ({
             descricao: item.descricao,
             unidade: item.unidade,
@@ -241,10 +280,8 @@ const getUsuarioLogado = () => {
             preco_unit: item.preco_unit,
             imposto: item.imposto,
             preco_total: item.preco_total,
-            orcamento_item_id: item.orcamento_item_id,
-            usuario_lancamento: usuarioLogado
+            orcamento_item_id: item.orcamento_item_id
           }))
-          
         };
 
         await axios.post('https://erp-minhas-obras-backend.onrender.com/notas-fiscais', payload);
@@ -257,11 +294,8 @@ const getUsuarioLogado = () => {
     }
   };
 
-  // ✅ Função para abrir a lista de fornecedores
   const handleAbrirListaFornecedores = () => {
-    // Armazena o caminho atual no sessionStorage para voltar depois
     sessionStorage.setItem('retornoAposCadastroFornecedor', '/financeiro/nova-nota');
-    // Navega para a lista de fornecedores
     navigate('/fornecedores');
   };
 
@@ -288,7 +322,10 @@ const getUsuarioLogado = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">Obra *</label>
               <select
                 value={obraId}
-                onChange={e => setObraId(Number(e.target.value) || '')}
+                onChange={e => {
+                  setObraId(Number(e.target.value) || '');
+                  setPedidoCompraId(''); // ✅ Reseta pedido ao mudar obra
+                }}
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               >
@@ -301,10 +338,9 @@ const getUsuarioLogado = () => {
             <div>
               <div className="flex justify-between items-center mb-1">
                 <label className="block text-sm font-medium text-gray-700">Fornecedor *</label>
-                {/* ✅ Botão alterado para redirecionar para a lista de fornecedores */}
                 <button
                   type="button"
-                  onClick={handleAbrirListaFornecedores} // ✅ Chama a função de redirecionamento
+                  onClick={handleAbrirListaFornecedores}
                   className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
                 >
                   <FiPlus className="mr-1 w-4 h-4" /> Novo Fornecedor
@@ -312,7 +348,10 @@ const getUsuarioLogado = () => {
               </div>
               <select
                 value={fornecedorId}
-                onChange={e => setFornecedorId(Number(e.target.value) || '')}
+                onChange={e => {
+                  setFornecedorId(Number(e.target.value) || '');
+                  setPedidoCompraId(''); // ✅ Reseta pedido ao mudar fornecedor
+                }}
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               >
@@ -322,6 +361,25 @@ const getUsuarioLogado = () => {
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* ✅ SELEÇÃO DE PEDIDO DE COMPRA */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Pedido de Compra (opcional)
+            </label>
+            <select
+              value={pedidoCompraId || ''}
+              onChange={e => setPedidoCompraId(Number(e.target.value) || '')}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">— Não usar pedido —</option>
+              {pedidos.map(pedido => (
+                <option key={pedido.id} value={pedido.id}>
+                  {pedido.codigo || `PC-${String(pedido.id).padStart(4, '0')}`} - {pedido.itens.length} itens
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Dados da Nota */}
@@ -360,21 +418,37 @@ const getUsuarioLogado = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">Data do Lançamento</label>
               <input
                 type="date"
-                value={dataLancamento} // ✅ Valor fixo
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-100" // ✅ bg-gray-100 para indicar somente leitura
-                readOnly // ✅ Impede edição
+                value={dataLancamento}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-100"
+                readOnly
               />
             </div>
-            </div>
-            {/* ✅ Novo campo para o usuário logado */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Lançado por</label>
-              <input
-                type="text"
-                value={getUsuarioLogado()} // ✅ Exibe o nome do usuário logado
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-100" // ✅ bg-gray-100 para indicar somente leitura
-                readOnly // ✅ Impede edição
-              />
+          </div>
+
+          {/* ✅ Campo de Desconto */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Desconto (R$)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={desconto}
+              onChange={e => setDesconto(parseFloat(e.target.value) || 0)}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              min="0"
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Lançado por</label>
+            <input
+              type="text"
+              value={getUsuarioLogado()}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-100"
+              readOnly
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Data Pagamento</label>
               <input
@@ -410,7 +484,7 @@ const getUsuarioLogado = () => {
             />
           </div>
 
-          {/* ✅ Campos de anexo */}
+          {/* Campos de anexo */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -484,7 +558,6 @@ const getUsuarioLogado = () => {
                           required
                         />
                       </td>
-                      {/* ✅ QUANTIDADE */}
                       <td className="px-3 py-2">
                         <input
                           type="text"
@@ -526,7 +599,6 @@ const getUsuarioLogado = () => {
                           required
                         />
                       </td>
-                      {/* ✅ PREÇO UNITÁRIO */}
                       <td className="px-3 py-2">
                         <input
                           type="text"
@@ -568,7 +640,6 @@ const getUsuarioLogado = () => {
                           required
                         />
                       </td>
-                      {/* ✅ IMPOSTO */}
                       <td className="px-3 py-2">
                         <input
                           type="text"
