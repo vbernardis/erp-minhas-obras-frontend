@@ -6,6 +6,7 @@ import { FiArrowLeft } from 'react-icons/fi';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import html2canvas from 'html2canvas'; 
 
 interface Obra {
   id: number;
@@ -19,6 +20,12 @@ interface Obra {
   previsao_termino: string | null;
   valor_previsto: number;
   valor_realizado: number;
+}
+
+interface DiarioObra {
+  id: number;
+  data: string;
+  dias_improdutivos: number[];
 }
 
 // Função de formatação de moeda
@@ -112,9 +119,147 @@ export default function Relatorios() {
   const searchParams = new URLSearchParams(location.search);
 
   const [obras, setObras] = useState<Obra[]>([]);
+  
   // Estados reativos à URL
 const [tipoRelatorio, setTipoRelatorio] = useState<string | null>(null);
 const [obraIdRelatorio, setObraIdRelatorio] = useState<string | null>(null);
+const [filtroObraGeral, setFiltroObraGeral] = useState<string | null>(null);
+
+// ✅ Função idêntica à do Diario.tsx (com ajuste de obra.nome e mesRef)
+const gerarPDFMapaChuvas = async (obraId: number) => {
+  try {
+    const resObra = await axios.get<Obra>(`https://erp-minhas-obras-backend.onrender.com/obras/${obraId}`);
+    const obra = resObra.data;
+    const hoje = new Date();
+    const mesRef = hoje.toISOString().slice(0, 7); // ex: "2025-04"
+    const ano = hoje.getFullYear();
+    const mesNum = hoje.getMonth();
+    const totalDias = new Date(ano, mesNum + 1, 0).getDate();
+
+    const resDiarios = await axios.get<DiarioObra[]>(
+      `https://erp-minhas-obras-backend.onrender.com/diarios-obras?obra_id=${obraId}`
+    );
+
+    const todosDiasImprodutivos = new Set<number>();
+    resDiarios.data.forEach((diario) => {
+      if (typeof diario.data === 'string' && diario.data.startsWith(mesRef) && Array.isArray(diario.dias_improdutivos)) {
+        diario.dias_improdutivos.forEach((dia) => {
+          if (typeof dia === 'number' && dia >= 1 && dia <= totalDias) {
+            todosDiasImprodutivos.add(dia);
+          }
+        });
+      }
+    });
+
+    // ✅ EXATAMENTE O MESMO CÓDIGO DO DIARIO.TSX
+    const r = 140;
+    const cx = 150;
+    const cy = 150;
+    const anguloTotal = 360;
+    const anguloPorDia = anguloTotal / totalDias;
+
+    let paths = '';
+    for (let i = 0; i < totalDias; i++) {
+      const dia = i + 1;
+      const startAngle = (i * anguloPorDia - 90) * (Math.PI / 180);
+      const endAngle = ((i + 1) * anguloPorDia - 90) * (Math.PI / 180);
+      const x1 = cx + r * Math.cos(startAngle);
+      const y1 = cy + r * Math.sin(startAngle);
+      const x2 = cx + r * Math.cos(endAngle);
+      const y2 = cy + r * Math.sin(endAngle);
+      const largeArcFlag = anguloPorDia > 180 ? 1 : 0;
+      const fill = todosDiasImprodutivos.has(dia) ? '#3b82f6' : '#ffffff';
+      const textFill = todosDiasImprodutivos.has(dia) ? '#ffffff' : '#000000';
+
+      const pathData = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+      const textX = cx + (r - 25) * Math.cos((startAngle + endAngle) / 2);
+      const textY = cy + (r - 25) * Math.sin((startAngle + endAngle) / 2);
+
+      paths += `
+        <path d="${pathData}" fill="${fill}" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="${textX}" y="${textY}" fill="${textFill}" font-size="12" font-weight="bold" text-anchor="middle" dominant-baseline="middle">${dia}</text>
+      `;
+    }
+
+    const svgContent = `
+      <svg width="300" height="300" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg" style="background:#fff;">
+        ${paths}
+      </svg>
+    `;
+
+    // ✅ Converter SVG para imagem PNG (alta qualidade)
+    const svgBlob = new Blob([svgContent], { type: 'image/svg+xml' });
+    const svgUrl = URL.createObjectURL(svgBlob);
+
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(svgUrl);
+
+      // ✅ Criar canvas grande (2x)
+      const canvas = document.createElement('canvas');
+      const scale = 2;
+      canvas.width = 300 * scale;
+      canvas.height = 300 * scale;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      }
+
+      // ✅ Gerar PDF (exatamente como no Diario.tsx)
+      const imgData = canvas.toDataURL('image/png');
+      const doc = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = doc.internal.pageSize.width;
+      const pageHeight = doc.internal.pageSize.height;
+
+      // Cabeçalho
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text('ERP MINHAS OBRAS', pageWidth / 2, 20, { align: 'center' });
+      doc.setFontSize(14);
+      doc.text('MAPA DE CHUVAS', pageWidth / 2, 30, { align: 'center' });
+
+      doc.setFontSize(11);
+      doc.text(`Obra: ${obra.nome}`, 20, 45);
+      doc.text(`Mês: ${mesRef}`, 20, 52);
+
+      // Gráfico grande e centralizado (180mm)
+      const imgWidth = 180;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const x = (pageWidth - imgWidth) / 2;
+      const y = 60;
+      doc.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
+
+      // Legenda
+      doc.setFontSize(10);
+      doc.setFillColor(59, 130, 246);
+      doc.rect(20, y + imgHeight + 10, 6, 6, 'F');
+      doc.text('Dias impraticáveis', 30, y + imgHeight + 15);
+      doc.setDrawColor(200, 200, 200);
+      doc.setFillColor(255, 255, 255);
+      doc.rect(20, y + imgHeight + 22, 6, 6, 'FD');
+      doc.text('Dias práticos', 30, y + imgHeight + 27);
+
+      // Rodapé
+      doc.setFontSize(9);
+      doc.text(`Relatório gerado em: ${new Date().toLocaleDateString('pt-BR')}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+
+      doc.save(`mapa-chuvas-${obra.nome.replace(/\s+/g, '-')}-${mesRef}.pdf`);
+    };
+
+    img.onerror = (e) => {
+      console.error('Erro ao carregar imagem do Mapa de Chuvas:', e);
+      URL.revokeObjectURL(svgUrl);
+      alert('Erro ao carregar gráfico. Verifique o console.');
+    };
+
+    img.src = svgUrl;
+  } catch (err) {
+    console.error('Erro ao exportar Mapa de Chuvas:', err);
+    alert('Erro ao gerar PDF. Verifique o console.');
+  }
+};
 
 // Atualiza os estados sempre que a URL mudar
 useEffect(() => {
@@ -135,11 +280,17 @@ useEffect(() => {
   }, []);
 
   const handleRelatorio = (tipo: string, obraId?: number) => {
+  if (obraId && (tipo === 'contas-pagas' || tipo === 'contas-pagar')) {
+    // ✅ Redireciona diretamente para a nova página de relatório
+    navigate(`/relatorios/${tipo}/${obraId}`);
+  } else {
+    // ✅ Mantém o comportamento antigo para os demais tipos
     const params = new URLSearchParams();
     params.set('tipo', tipo);
     if (obraId) params.set('obra_id', String(obraId));
     navigate(`/relatorios?${params.toString()}`);
-  };
+  }
+};
 
   const handleVoltar = () => {
     setTipoRelatorio(null);
@@ -556,32 +707,75 @@ const handleExportarPDF = () => {
         )}
       </div>
 
+            {/* Botões para relatórios gerais */}
       {/* Botões para relatórios gerais */}
       <div className="bg-white p-4 rounded shadow">
         <h3 className="font-semibold mb-2">Relatórios Gerais</h3>
         <div className="flex flex-wrap gap-2">
+          {/* Pedidos de Compra com filtro de obra */}
+          <div className="flex flex-wrap gap-2 items-end">
+            <select
+              value={filtroObraGeral || ''}
+              onChange={(e) => setFiltroObraGeral(e.target.value || null)}
+              className="text-sm px-2 py-1 border border-gray-300 rounded"
+              style={{ minWidth: '150px' }}
+            >
+              <option value="">Selecione uma obra</option>
+              {obras.map(o => (
+                <option key={o.id} value={o.id}>{o.nome}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => {
+                if (filtroObraGeral) {
+                  navigate(`/relatorios/pedidos-compra/${filtroObraGeral}`);
+                } else {
+                  alert('Selecione uma obra primeiro.');
+                }
+              }}
+              className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+              disabled={!filtroObraGeral}
+            >
+              Pedidos de Compra
+            </button>
+          </div>
+
+          {/* Botão de Mapa de Chuvas (gera PDF diretamente) */}
+          <div className="flex flex-wrap gap-2 items-end">
+            <select
+              value={filtroObraGeral || ''}
+              onChange={(e) => setFiltroObraGeral(e.target.value || null)}
+              className="text-sm px-2 py-1 border border-gray-300 rounded"
+              style={{ minWidth: '150px' }}
+            >
+              <option value="">Selecione uma obra</option>
+              {obras.map(o => (
+                <option key={o.id} value={o.id}>{o.nome}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => {
+                if (filtroObraGeral) {
+                  gerarPDFMapaChuvas(parseInt(filtroObraGeral));
+                } else {
+                  alert('Selecione uma obra primeiro.');
+                }
+              }}
+              className="px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"
+              disabled={!filtroObraGeral}
+            >
+              Mapa de Chuvas (PDF)
+            </button>
+          </div>
+
           <button
-            onClick={() => handleRelatorio('pedidos-compra')}
-            className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
-          >
-            Pedidos de Compra
-          </button>
-          <button
-            onClick={() => handleRelatorio('mapa-chuvas')}
-            className="px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"
-            disabled
-          >
-            Mapa de Chuvas (em breve)
-          </button>
-          <button
-            onClick={() => handleRelatorio('curva-s')}
+            onClick={() => navigate('/relatorios/curva-s')}
             className="px-3 py-1 bg-teal-600 text-white text-sm rounded hover:bg-teal-700"
-            disabled
           >
-            Curva S (em breve)
+            Curva S
           </button>
         </div>
       </div>
     </div>
-  );
+        );
 }

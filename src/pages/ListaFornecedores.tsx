@@ -147,63 +147,69 @@ export default function ListaFornecedores() {
       {loading ? (
         <p className="text-gray-500">Carregando...</p>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className="bg-white rounded-lg shadow overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">ID</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[180px]">Razão Social</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[160px]">Nome Fantasia</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">CNPJ</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[160px]">E-mail</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Telefone</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Cidade/UF</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">Ações</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {fornecedores.length === 0 ? (
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Razão Social</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nome Fantasia</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">CNPJ</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">E-mail</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Telefone</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cidade/UF</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ações</th>
+                <td colSpan={8} className="px-4 py-6 text-center text-gray-500 text-[15px]">
+                  Nenhum fornecedor cadastrado.
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {fornecedores.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-6 py-4 text-center text-gray-500">
-                    Nenhum fornecedor cadastrado.
+            ) : (
+              fornecedores.map(f => (
+                <tr key={f.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-[15px] font-mono text-gray-700 whitespace-nowrap">#{f.id}</td>
+                  <td className="px-4 py-3 text-[15px] text-gray-700 min-w-[180px] max-w-[240px] truncate" title={f.razao_social}>
+                    {f.razao_social || '—'}
+                  </td>
+                  <td className="px-4 py-3 text-[15px] text-gray-700 min-w-[160px] max-w-[200px] truncate" title={f.nome_fantasia}>
+                    {f.nome_fantasia || '—'}
+                  </td>
+                  <td className="px-4 py-3 text-[15px] font-mono text-gray-700 whitespace-nowrap">{f.cnpj || '—'}</td>
+                  <td className="px-4 py-3 text-[15px] text-gray-700 min-w-[160px] max-w-[200px] truncate" title={f.email}>
+                    {f.email || '—'}
+                  </td>
+                  <td className="px-4 py-3 text-[15px] text-gray-700 whitespace-nowrap">{f.telefone || '—'}</td>
+                  <td className="px-4 py-3 text-[15px] text-gray-700 whitespace-nowrap">
+                    {f.cidade && f.uf ? `${f.cidade}/${f.uf}` : '—'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => navigate(`/fornecedores/editar/${f.id}`)}
+                        className="text-blue-600 hover:text-blue-800 p-1.5"
+                        title="Editar"
+                      >
+                        <FiEdit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(f.id)}
+                        className="text-red-600 hover:text-red-800 p-1.5"
+                        title="Excluir"
+                      >
+                        <FiTrash className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
-              ) : (
-                fornecedores.map(f => (
-                  <tr key={f.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm font-mono text-gray-700">#{f.id}</td>
-                    <td className="px-6 py-4 text-sm">{f.razao_social}</td>
-                    <td className="px-6 py-4 text-sm">{f.nome_fantasia}</td>
-                    <td className="px-6 py-4 text-sm font-mono">{f.cnpj || '—'}</td>
-                    <td className="px-6 py-4 text-sm">{f.email || '—'}</td>
-                    <td className="px-6 py-4 text-sm">{f.telefone || '—'}</td>
-                    <td className="px-6 py-4 text-sm">
-                      {f.cidade && f.uf ? `${f.cidade}/${f.uf}` : '—'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => navigate(`/fornecedores/editar/${f.id}`)}
-                          className="text-blue-600 hover:text-blue-800 p-1"
-                          title="Editar"
-                        >
-                          <FiEdit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(f.id)}
-                          className="text-red-600 hover:text-red-800 p-1"
-                          title="Excluir"
-                        >
-                          <FiTrash className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
       )}
     </div>
   );

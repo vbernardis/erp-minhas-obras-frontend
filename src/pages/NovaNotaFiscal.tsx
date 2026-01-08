@@ -76,6 +76,10 @@ export default function NovaNotaFiscal() {
   const [formaPagamento, setFormaPagamento] = useState<'Boleto' | 'Pix' | 'Depósito' | ''>('');
   const [frete, setFrete] = useState<number>(0);
   const [desconto, setDesconto] = useState<number>(0); // ✅ Novo estado
+  const [freteEmEdicao, setFreteEmEdicao] = useState<string | undefined>(undefined);
+  
+  // ✅ Estado para valor bruto do desconto (durante digitação)
+const [descontoEmEdicao, setDescontoEmEdicao] = useState<string | undefined>(undefined);
 
   const [dataLancamento] = useState(() => new Date().toISOString().split('T')[0]);
 
@@ -425,18 +429,44 @@ export default function NovaNotaFiscal() {
             </div>
           </div>
 
-          {/* ✅ Campo de Desconto */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Desconto (R$)</label>
-            <input
-              type="number"
-              step="0.01"
-              value={desconto}
-              onChange={e => setDesconto(parseFloat(e.target.value) || 0)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              min="0"
-            />
-          </div>
+          {/* ✅ Campo de Desconto (usável, com cursor estável) */}
+<div>
+  <label className="block text-sm font-medium text-gray-700 mb-1">Desconto (R$)</label>
+  <input
+    type="text"
+    // Exibe valor bruto durante a digitação (sem formatação forçada)
+    value={descontoEmEdicao !== undefined ? descontoEmEdicao : (desconto > 0 ? desconto.toString().replace('.', ',') : '')}
+    onChange={(e) => {
+      let valor = e.target.value;
+      // Permite: dígitos, vírgula, e no máximo uma vírgula
+      valor = valor.replace(/[^0-9,]/g, '');
+      const partes = valor.split(',');
+      if (partes.length > 2) {
+        valor = partes[0] + ',' + partes[1];
+      }
+      // Atualiza valor temporário (não formata ainda)
+      setDescontoEmEdicao(valor);
+    }}
+    onBlur={(e) => {
+      // Ao sair do campo: converte para número e formata
+      let valor = descontoEmEdicao || e.target.value;
+      if (valor === '') {
+        setDesconto(0);
+        setDescontoEmEdicao('');
+        return;
+      }
+      // Normaliza para ponto
+      let numStr = valor.replace(',', '.');
+      let num = parseFloat(numStr);
+      if (isNaN(num) || num < 0) num = 0;
+      setDesconto(num);
+      // Opcional: exibir formatado após blur
+      setDescontoEmEdicao(num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    }}
+    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+    placeholder="0,00"
+  />
+</div>
 
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1">Lançado por</label>
@@ -473,14 +503,36 @@ export default function NovaNotaFiscal() {
             </div>
           </div>
 
+          {/* ✅ Campo de Frete (usável, com cursor estável) */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Valor do Frete (R$)</label>
             <input
-              type="number"
-              step="0.01"
-              value={frete}
-              onChange={e => setFrete(parseFloat(e.target.value) || 0)}
+              type="text"
+              value={freteEmEdicao !== undefined ? freteEmEdicao : (frete > 0 ? frete.toString().replace('.', ',') : '')}
+              onChange={(e) => {
+                let valor = e.target.value;
+                valor = valor.replace(/[^0-9,]/g, '');
+                const partes = valor.split(',');
+                if (partes.length > 2) {
+                  valor = partes[0] + ',' + partes[1];
+                }
+                setFreteEmEdicao(valor);
+              }}
+              onBlur={(e) => {
+                let valor = freteEmEdicao || e.target.value;
+                if (valor === '') {
+                  setFrete(0);
+                  setFreteEmEdicao('');
+                  return;
+                }
+                let numStr = valor.replace(',', '.');
+                let num = parseFloat(numStr);
+                if (isNaN(num) || num < 0) num = 0;
+                setFrete(num);
+                setFreteEmEdicao(num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+              }}
               className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="0,00"
             />
           </div>
 
@@ -713,6 +765,35 @@ export default function NovaNotaFiscal() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+
+                    {/* ✅ TOTALIZADOR VISUAL */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h3 className="text-lg font-bold text-blue-800 mb-2">Resumo da Nota Fiscal</h3>
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span>Total dos Itens:</span>
+                <span className="font-medium">R$ {itens.reduce((sum, item) => sum + (item.preco_total || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Frete:</span>
+                <span className="font-medium">R$ {frete.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Desconto:</span>
+                <span className="font-medium text-red-600">- R$ {desconto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div className="border-t border-blue-300 pt-2 mt-2 flex justify-between font-bold text-lg text-blue-900">
+                <span>Valor Total:</span>
+                <span>
+                  R$ {(
+                    itens.reduce((sum, item) => sum + (item.preco_total || 0), 0) +
+                    frete -
+                    desconto
+                  ).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
             </div>
           </div>
 

@@ -28,6 +28,12 @@ import EditarNotaFiscal from './pages/EditarNotaFiscal';
 import BaixaNotaFiscal from './pages/BaixaNotaFiscal';
 import axios from 'axios';
 import Relatorios from './pages/Relatorios';
+import CurvaS from './pages/CurvaS';
+import RelatorioContasPagas from './pages/RelatorioContasPagas';
+import RelatorioContasAPagar from './pages/RelatorioContasAPagar';
+import RelatorioMapaChuvas from './pages/RelatorioMapaChuvas';
+import RelatorioPedidosCompra from './pages/RelatorioPedidosCompra';
+
 
 
 // Configura o axios para sempre ler o user do localStorage e enviar no header
@@ -211,6 +217,16 @@ function App() {
 <Route path="/financeiro/editar-nota/:id" element={<EditarNotaFiscal />} />
 
 <Route path="/notas-fiscais/:id/baixa" element={<BaixaNotaFiscal />} />
+
+<Route path="/relatorios/curva-s" element={<CurvaS />} />
+
+<Route path="/relatorios/contas-pagas/:obraId" element={<RelatorioContasPagas />} />
+
+<Route path="/relatorios/contas-pagar/:obraId" element={<RelatorioContasAPagar />} />
+
+<Route path="/relatorios/mapa-chuvas/:obraId" element={<RelatorioMapaChuvas />} />
+
+<Route path="/relatorios/pedidos-compra/:obraId" element={<RelatorioPedidosCompra />} />
 
       </Routes>
       

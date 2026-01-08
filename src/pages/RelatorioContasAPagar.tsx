@@ -1,4 +1,4 @@
-// src/pages/RelatorioContasPagas.tsx
+// src/pages/RelatorioContasAPagar.tsx
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
@@ -53,9 +53,9 @@ export default function RelatorioContasPagas() {
       axios.get<NotaFiscal[]>(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais?obra_id=${obraId}`)
     ]);
     setObraNome(obraRes.data.nome);
-    // ✅ Filtrar LOCALMENTE as notas com status = "pago"
-    const notasPagas = todasNotasRes.data.filter(n => n.status === 'pago');
-    setNotas(notasPagas);
+    // ✅ Filtrar LOCALMENTE as notas com status = "pendente"
+    const notasAPagar = todasNotasRes.data.filter(n => n.status === 'pendente');
+    setNotas(notasAPagar);
   } catch (err) {
     alert('Erro ao carregar dados.');
     console.error(err);

@@ -415,7 +415,7 @@ if (imagens.length > 0) {
       <div style="text-align:center; margin-bottom:20px; padding-bottom:15px; border-bottom:3px solid #1e40af;">
         <h1 style="font-size:18pt; margin:5px 0; color:#1e3a8a; font-weight:700;">ERP MINHAS OBRAS</h1>
       </div>
-      <div style="text-align:center; font-weight:bold; font-size:14pt; margin:20px 0 25px; color:#1e3a8a; text-decoration:underline;">
+      <div style="text-align:center; font-weight:bold; font-size:14pt; margin:20px 0 25px; color:#1e3a8a; text-decoration;">
         RELATÓRIO DIÁRIO DE OBRA (RDO)
       </div>
       
@@ -568,7 +568,6 @@ if (imagens.length > 0) {
   }
 };
 
-// Função para exportar Mapa de Chuvas como PDF (frontend)
 const exportarMapaChuvasPDF = async () => {
   if (!filtroObra) {
     alert('Selecione uma obra nos filtros primeiro.');
@@ -578,7 +577,6 @@ const exportarMapaChuvasPDF = async () => {
   try {
     const resObra = await axios.get<Obra>(`https://erp-minhas-obras-backend.onrender.com/obras/${filtroObra}`);
     const obra = resObra.data;
-
     const hoje = new Date();
     const mesRef = hoje.toISOString().slice(0, 7);
     const ano = hoje.getFullYear();
@@ -600,114 +598,107 @@ const exportarMapaChuvasPDF = async () => {
       }
     });
 
-    // ✅ SVG com tamanho AUMENTADO
-    const gerarSvg = (diasImprodutivos: Set<number>, totalDias: number) => {
-      const r = 240; // ✅ Aumentado (era 140)
-      const cx = 180; // ✅ Ajustado para centralizar com novo raio
-      const cy = 180;
-      let paths = '';
-      for (let i = 0; i < totalDias; i++) {
-        const dia = i + 1;
-        const startAngle = (i / totalDias) * 360 - 90;
-        const endAngle = ((i + 1) / totalDias) * 360 - 90;
-        const startRad = (startAngle * Math.PI) / 180;
-        const endRad = (endAngle * Math.PI) / 180;
-        const x1 = cx + r * Math.cos(startRad);
-        const y1 = cy + r * Math.sin(startRad);
-        const x2 = cx + r * Math.cos(endRad);
-        const y2 = cy + r * Math.sin(endRad);
-        const largeArc = endAngle - startAngle > 180 ? 1 : 0;
+    // ✅ Criar SVG em string
+    const r = 140;
+    const cx = 150;
+    const cy = 150;
+    const anguloTotal = 360;
+    const anguloPorDia = anguloTotal / totalDias;
 
-        const fill = diasImprodutivos.has(dia) ? '#3b82f6' : '#ffffff';
-        const textFill = diasImprodutivos.has(dia) ? '#ffffff' : '#000000';
+    let paths = '';
+    for (let i = 0; i < totalDias; i++) {
+      const dia = i + 1;
+      const startAngle = (i * anguloPorDia - 90) * (Math.PI / 180);
+      const endAngle = ((i + 1) * anguloPorDia - 90) * (Math.PI / 180);
+      const x1 = cx + r * Math.cos(startAngle);
+      const y1 = cy + r * Math.sin(startAngle);
+      const x2 = cx + r * Math.cos(endAngle);
+      const y2 = cy + r * Math.sin(endAngle);
+      const largeArcFlag = anguloPorDia > 180 ? 1 : 0;
+      const fill = todosDiasImprodutivos.has(dia) ? '#3b82f6' : '#ffffff';
+      const textFill = todosDiasImprodutivos.has(dia) ? '#ffffff' : '#000000';
 
-        const pathData = [
-          `M ${cx} ${cy}`,
-          `L ${x1} ${y1}`,
-          `A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`,
-          'Z'
-        ].join(' ');
+      const pathData = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+      const textX = cx + (r - 25) * Math.cos((startAngle + endAngle) / 2);
+      const textY = cy + (r - 25) * Math.sin((startAngle + endAngle) / 2);
 
-        const textX = cx + (r - 32) * Math.cos((startRad + endRad) / 2);
-        const textY = cy + (r - 32) * Math.sin((startRad + endRad) / 2);
+      paths += `
+        <path d="${pathData}" fill="${fill}" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="${textX}" y="${textY}" fill="${textFill}" font-size="12" font-weight="bold" text-anchor="middle" dominant-baseline="middle">${dia}</text>
+      `;
+    }
 
-        paths += `
-          <path d="${pathData}" fill="${fill}" stroke="#e5e7eb" stroke-width="0.5"/>
-          <text x="${textX}" y="${textY}" fill="${textFill}" font-size="16" font-weight="bold" text-anchor="middle" dominant-baseline="middle">${dia}</text>
-        `;
-      }
-      return `<svg width="380" height="380" viewBox="0 0 360 360">${paths}</svg>`;
-    };
-
-    // ✅ HTML com fontes maiores e margens ajustadas
-    const html = `
-      <div style="
-        width: 210mm;
-        min-height: 297mm;
-        padding: 20mm 12mm; /* ✅ menos padding lateral para mais espaço */
-        box-sizing: border-box;
-        font-family: Arial, sans-serif;
-        font-size: 14pt; /* ✅ aumentado */
-        color: #333;
-      ">
-        <div style="text-align: center; margin-bottom: 25px; padding-bottom: 12px; border-bottom: 2px solid #1e40af;">
-          <h1 style="font-size: 20pt; color: #1e3a8a; margin: 0;">MAPA DE CHUVAS</h1>
-          <p style="font-size: 14pt;">${obra.nome} • ${mesRef}</p>
-        </div>
-
-        <div style="
-          display: flex;
-          justify-content: center;
-          align-items: flex-start;
-          margin: 20px 0 30px;
-          min-height: 400px; /* ✅ mais altura */
-        ">
-          ${gerarSvg(todosDiasImprodutivos, totalDias)}
-        </div>
-
-        <div style="
-          background: #f8fafc;
-          border: 1px solid #cbd5e1;
-          border-radius: 8px;
-          padding: 16px;
-          margin: 20px 0;
-          font-size: 14pt; /* ✅ aumentado */
-        ">
-          <p><strong>Período:</strong> ${mesRef}</p>
-          <p><strong>Dias impraticáveis:</strong> ${todosDiasImprodutivos.size > 0 ? Array.from(todosDiasImprodutivos).join(', ') : 'Nenhum'}</p>
-          <p><strong>Dias úteis:</strong> ${totalDias - todosDiasImprodutivos.size} / ${totalDias}</p>
-        </div>
-
-        <div style="
-          text-align: center;
-          margin-top: 30px;
-          color: #64748b;
-          font-size: 12pt; /* ✅ aumentado */
-        ">
-          Relatório gerado automaticamente pelo ERP Minhas Obras
-        </div>
-      </div>
+    const svgContent = `
+      <svg width="300" height="300" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg" style="background:#fff;">
+        ${paths}
+      </svg>
     `;
 
-    const printDiv = document.createElement('div');
-    printDiv.innerHTML = html;
-    document.body.appendChild(printDiv);
+    // ✅ Converter SVG para imagem PNG (alta qualidade)
+    const svgBlob = new Blob([svgContent], { type: 'image/svg+xml' });
+    const svgUrl = URL.createObjectURL(svgBlob);
 
-    const canvas = await html2canvas(printDiv, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      logging: false
-    });
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(svgUrl);
 
-    document.body.removeChild(printDiv);
+      // ✅ Criar canvas grande
+      const canvas = document.createElement('canvas');
+      const scale = 2; // qualidade 2x
+      canvas.width = 300 * scale;
+      canvas.height = 300 * scale;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      }
 
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const imgWidth = 210;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-    pdf.save(`mapa-chuvas-${obra.nome.replace(/\s+/g, '-')}-${mesRef}.pdf`);
+      // ✅ Gerar PDF
+      const imgData = canvas.toDataURL('image/png');
+      const doc = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = doc.internal.pageSize.width;
+      const pageHeight = doc.internal.pageSize.height;
+
+      // Cabeçalho
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text('ERP MINHAS OBRAS', pageWidth / 2, 20, { align: 'center' });
+      doc.setFontSize(14);
+      doc.text('MAPA DE CHUVAS', pageWidth / 2, 30, { align: 'center' });
+
+      doc.setFontSize(11);
+      doc.text(`Obra: ${obra.nome}`, 20, 45);
+      doc.text(`Mês: ${mesRef}`, 20, 52);
+
+      // ✅ Gráfico grande e centralizado
+      const imgWidth = 180;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const x = (pageWidth - imgWidth) / 2;
+      const y = 60;
+      doc.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
+
+      // Legenda
+      doc.setFontSize(10);
+      doc.setFillColor(59, 130, 246);
+      doc.rect(20, y + imgHeight + 10, 6, 6, 'F');
+      doc.text('Dias impraticáveis', 30, y + imgHeight + 15);
+      doc.setDrawColor(200, 200, 200);
+      doc.setFillColor(255, 255, 255);
+      doc.rect(20, y + imgHeight + 22, 6, 6, 'FD');
+      doc.text('Dias práticos', 30, y + imgHeight + 27);
+
+      // Rodapé
+      doc.setFontSize(9);
+      doc.text(`Relatório gerado em: ${new Date().toLocaleDateString('pt-BR')}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+
+      doc.save(`mapa-chuvas-${obra.nome.replace(/\s+/g, '-')}-${mesRef}.pdf`);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(svgUrl);
+      alert('Erro ao carregar gráfico.');
+    };
+    img.src = svgUrl;
   } catch (err) {
     console.error('Erro ao exportar Mapa de Chuvas:', err);
     alert('Erro ao gerar PDF. Verifique o console.');
