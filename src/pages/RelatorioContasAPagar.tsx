@@ -54,7 +54,8 @@ export default function RelatorioContasPagas() {
     ]);
     setObraNome(obraRes.data.nome);
     // ✅ Filtrar LOCALMENTE as notas com status = "pendente"
-    const notasAPagar = todasNotasRes.data.filter(n => n.status === 'pendente');
+    const statusPermitidos = ['lançada', 'pendente'];
+const notasAPagar = todasNotasRes.data.filter(n => statusPermitidos.includes(n.status));
     setNotas(notasAPagar);
   } catch (err) {
     alert('Erro ao carregar dados.');
