@@ -41,7 +41,7 @@ export default function Usuarios() {
   // Função para carregar a lista de obras
   const carregarObras = async () => {
     try {
-      const resposta = await axios.get<Obra[]>('https://erp-minhas-obras-backend.onrender.com/obras');
+      const resposta = await axios.get<Obra[]>('http://localhost:3001/obras');
       setObras(resposta.data);
     } catch (erro) {
       console.error('Erro ao carregar obras:', erro);
@@ -51,7 +51,7 @@ export default function Usuarios() {
   const carregarUsuarios = async () => {
     setLoading(true);
     try {
-      const resposta = await axios.get<Usuario[]>('https://erp-minhas-obras-backend.onrender.com/users');
+      const resposta = await axios.get<Usuario[]>('http://localhost:3001/users');
       setUsuarios(resposta.data);
     } catch (erro) {
       alert('Erro ao carregar usuários: ' + erro);
@@ -76,7 +76,7 @@ export default function Usuarios() {
 
   const handleEdit = async (usuario: Usuario) => {
     try {
-      const resposta = await axios.get(`https://erp-minhas-obras-backend.onrender.com/users/${usuario.id}`);
+      const resposta = await axios.get(`http://localhost:3001/users/${usuario.id}`);
       const dados = resposta.data;
 
       setCurrentUsuario(dados);
@@ -88,12 +88,12 @@ export default function Usuarios() {
       });
 
       // Carregar permissões
-      const permRes = await axios.get(`https://erp-minhas-obras-backend.onrender.com/users/${usuario.id}/permissoes`);
+      const permRes = await axios.get(`http://localhost:3001/users/${usuario.id}/permissoes`);
       const permIds = permRes.data.map((p: any) => p.tela);
       setPermissions(permIds);
 
       // Carregar obras autorizadas → CONVERTER PARA STRING
-      const obraRes = await axios.get(`https://erp-minhas-obras-backend.onrender.com/users/${usuario.id}/obras`);
+      const obraRes = await axios.get(`http://localhost:3001/users/${usuario.id}/obras`);
       const obraIds = obraRes.data.map((o: any) => o.obra_id.toString());
       setObrasAutorizadas(obraIds);
 
@@ -109,7 +109,7 @@ export default function Usuarios() {
     if (!window.confirm('Tem certeza que deseja deletar este usuário?')) return;
 
     try {
-      await axios.delete(`https://erp-minhas-obras-backend.onrender.com/users/${id}`);
+      await axios.delete(`http://localhost:3001/users/${id}`);
       alert('Usuário deletado com sucesso!');
       carregarUsuarios();
     } catch (erro) {
@@ -118,57 +118,87 @@ export default function Usuarios() {
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      if (currentUsuario) {
-        await axios.put(`https://erp-minhas-obras-backend.onrender.com/users/${currentUsuario.id}`, {
-          name: formData.name,
-          email: formData.email,
-          role: formData.role
-        });
+  e.preventDefault();
+  try {
+    if (currentUsuario) {
+      // ... atualização existente ...
+      const novoUsuarioId = currentUsuario.id; // ← Adicione esta linha
 
-        await axios.post(`https://erp-minhas-obras-backend.onrender.com/users/${currentUsuario.id}/permissoes`, {
-          permissoes: permissions
-        });
+      // ✅ RECUPERAR USUÁRIO ATUALIZADO (com permissões corretas)
+      const usuarioAtualizado = await axios.get<Usuario>(
+        `http://localhost:3001/users/${novoUsuarioId}`
+      );
 
-        const obrasIds = obrasAutorizadas.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
-        await axios.post(`https://erp-minhas-obras-backend.onrender.com/users/${currentUsuario.id}/obras`, {
-          obras: obrasIds
-        });
+      // Atualizar localStorage se for o próprio usuário
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        try {
+          const currentUser = JSON.parse(userStr);
+          if (currentUser.id === novoUsuarioId) {
+            localStorage.setItem('user', JSON.stringify(usuarioAtualizado.data));
+          }
+        } catch (e) {
+          console.warn('Erro ao atualizar user no localStorage');
+        }
+      }
 
-        alert('Usuário atualizado com sucesso!');
-      } else {
-        const resposta = await axios.post('https://erp-minhas-obras-backend.onrender.com/users', {
+      alert('Usuário atualizado com sucesso!');
+    } else {
+      // Criar novo usuário
+      const resposta = await axios.post(
+        'http://localhost:3001/users',
+        {
           name: formData.name,
           email: formData.email,
           password: formData.password,
-          role: formData.role
-        });
-        const novoUsuarioId = resposta.data.id;
-
-        if (permissions.length > 0) {
-          await axios.post(`https://erp-minhas-obras-backend.onrender.com/users/${novoUsuarioId}/permissoes`, {
-            permissoes: permissions
-          });
+          role: formData.role,
         }
+      );
+      const novoUsuarioId = resposta.data.id; // ← Este é o original
 
-        const obrasIds = obrasAutorizadas.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
-        if (obrasIds.length > 0) {
-          await axios.post(`https://erp-minhas-obras-backend.onrender.com/users/${novoUsuarioId}/obras`, {
-            obras: obrasIds
-          });
-        }
-
-        alert('Usuário criado com sucesso!');
+      if (permissions.length > 0) {
+        await axios.post(
+          `http://localhost:3001/users/${novoUsuarioId}/permissoes`,
+          { permissoes: permissions }
+        );
       }
 
-      setShowModal(false);
-      carregarUsuarios();
-    } catch (erro) {
-      console.error('Erro ao salvar usuário:', erro);
-      alert('Erro ao salvar usuário: ' + (erro instanceof Error ? erro.message : 'Erro desconhecido'));
+      const obrasIds = obrasAutorizadas.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+      if (obrasIds.length > 0) {
+        await axios.post(
+          `http://localhost:3001/users/${novoUsuarioId}/obras`,
+          { obras: obrasIds }
+        );
+      }
+
+      // ✅ RECUPERAR USUÁRIO CRIADO (com permissões corretas)
+      const usuarioCompleto = await axios.get<Usuario>(
+        `http://localhost:3001/users/${novoUsuarioId}`
+      );
+
+      // Atualizar localStorage se for o próprio usuário
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        try {
+          const currentUser = JSON.parse(userStr);
+          if (currentUser.id === novoUsuarioId) {
+            localStorage.setItem('user', JSON.stringify(usuarioCompleto.data));
+          }
+        } catch (e) {
+          console.warn('Erro ao atualizar user no localStorage');
+        }
+      }
+
+      alert('Usuário criado com sucesso!');
     }
-  };
+
+    setShowModal(false);
+    carregarUsuarios();
+  } catch (erro) {
+    console.error('Erro ao salvar usuário:', erro);
+    alert('Erro ao salvar usuário: ' + (erro instanceof Error ? erro.message : 'Erro desconhecido'));
+  }
+};
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({

@@ -17,16 +17,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   };
 
   const menuItems = [
-  { name: 'Dashboard', icon: FiHome, path: '/dashboard', permission: 'obras:read' },
-  { name: 'Obras', icon: FiFile, path: '/obras', permission: 'obras:read' },
-  { name: 'Orçamentos', icon: FiDollarSign, path: '/orcamentos', permission: 'orcamentos:read' },
-  { name: 'Diário de Obra', icon: FiClipboard, path: '/diario', permission: 'obras:read' },
-  { name: 'Financeiro', icon: FiDollarSign, path: '/financeiro', permission: 'financeiro:read' },
-  // ✅ Novo item: Suprimentos
-  { name: 'Suprimentos', icon: FiFile, path: '/suprimentos', permission: 'obras:read' },
-  // ✅ Novo item: Relatórios
-  { name: 'Relatórios', icon: FiFile, path: '/relatorios', permission: 'obras:read' },
-  { name: 'Usuários', icon: FiUsers, path: '/usuarios', permission: 'usuarios:write' },
+  { name: 'Dashboard', icon: FiHome, path: '/dashboard', permission: 'obras.listar' },
+  { name: 'Obras', icon: FiFile, path: '/obras', permission: 'obras.listar' },
+  { name: 'Orçamentos', icon: FiDollarSign, path: '/orcamentos', permission: 'orcamentos.listar' },
+  { name: 'Diário de Obra', icon: FiClipboard, path: '/diario', permission: 'diario.listar' },
+  { name: 'Financeiro', icon: FiDollarSign, path: '/financeiro', permission: 'financeiro.notas.lancar' },
+  { name: 'Suprimentos', icon: FiFile, path: '/suprimentos', permission: 'suprimentos.fornecedores' },
+  { name: 'Relatórios', icon: FiFile, path: '/relatorios', permission: 'relatorios.acessar' },
+  { name: 'Usuários', icon: FiUsers, path: '/usuarios', permission: 'usuarios.gerenciar' },
 ];
 
   // ... resto do código permanece EXATAMENTE IGUAL

@@ -72,7 +72,7 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    if (!hasPermission('obras:read')) {
+    if (!hasPermission('obras.listar')) {
       alert('Você não tem permissão para acessar esta página.');
       navigate('/login');
       return;
