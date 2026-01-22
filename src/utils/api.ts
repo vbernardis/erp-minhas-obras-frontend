@@ -1,11 +1,22 @@
 // src/utils/api.ts
 import axios from 'axios';
 
-// ✅ Usa variável de ambiente ou fallback para backend no Render
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://erp-minhas-obras-backend.onrender.com';
-
 const api = axios.create({
-  baseURL: API_BASE_URL
+  baseURL: 'https://erp-minhas-obras-backend.onrender.com'
+});
+
+// Interceptor para adicionar X-User-ID automaticamente
+api.interceptors.request.use((config) => {
+  const userStr = localStorage.getItem('user');
+  if (userStr) {
+    try {
+      const user = JSON.parse(userStr);
+      config.headers['X-User-ID'] = String(user.id);
+    } catch (e) {
+      console.warn('Erro ao parsear usuário do localStorage');
+    }
+  }
+  return config;
 });
 
 export default api;
