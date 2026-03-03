@@ -23,23 +23,32 @@ interface Obra {
   nome: string;
 }
 
-const formatarMoeda = (valor: number | null | undefined): string => {
+// ✅ Função centralizada para formatar data como DD/MM/AAAA
+const formatarDataBR = (dataISO: string | null | undefined): string => {
+  if (!dataISO) return '—';
+  // Remove possíveis caracteres extras e divide
+  const partes = dataISO.trim().split(/[-T]/);
+  if (partes.length >= 3) {
+    const [ano, mes, dia] = partes;
+    return `${dia}/${mes}/${ano}`;
+  }
+  return '—';
+};
+
+// ✅ Função para formatar moeda no padrão brasileiro
+const formatarMoedaBR = (valor: number | null | undefined): string => {
   if (valor == null || isNaN(valor)) return 'R$ 0,00';
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
-    minimumFractionDigits: 2
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
   }).format(valor);
 };
 
+// ✅ Função para garantir número válido
 const valorOuZero = (valor: number | null | undefined): number => {
   return valor != null && !isNaN(valor) ? valor : 0;
-};
-
-// ✅ Função para comparar datas no formato YYYY-MM-DD
-const compararDatas = (data: string | null | undefined, limite: string): boolean => {
-  if (!data) return false;
-  return data >= limite;
 };
 
 export default function RelatorioContasPagas() {
@@ -84,7 +93,7 @@ export default function RelatorioContasPagas() {
     return true;
   });
 
-  // ✅ Exportar PDF com filtro de período aplicado
+  // ✅ Exportar PDF com datas DD/MM/AAAA e valores formatados
   const exportarPDF = () => {
     const doc = new jsPDF('landscape', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.width;
@@ -98,17 +107,17 @@ export default function RelatorioContasPagas() {
     
     // ✅ Mostrar período no PDF se filtrado
     if (dataInicio || dataFim) {
-      doc.text(`Período: ${dataInicio || '—'} até ${dataFim || '—'}`, 20, 42);
+      doc.text(`Período: ${dataInicio ? formatarDataBR(dataInicio) : '—'} até ${dataFim ? formatarDataBR(dataFim) : '—'}`, 20, 42);
     }
 
     const tableData = notasFiltradas.map(n => [
       n.numero_nota || '—',
       n.fornecedores?.nome_fantasia || '—',
-      n.data_emissao || '—',
-      n.data_vencimento || '—',
-      n.data_pagamento || '—',
-      formatarMoeda(n.valor_total),
-      formatarMoeda(n.valor_pago)
+      formatarDataBR(n.data_emissao),
+      formatarDataBR(n.data_vencimento),
+      formatarDataBR(n.data_pagamento),
+      formatarMoedaBR(n.valor_total),
+      formatarMoedaBR(n.valor_pago)
     ]);
 
     (doc as any).autoTable({
@@ -132,23 +141,47 @@ export default function RelatorioContasPagas() {
     doc.save(`contas-pagas-${obraNome.replace(/\s+/g, '-')}.pdf`);
   };
 
-  // ✅ Exportar Excel com filtro de período aplicado
+  // ✅ Exportar Excel com datas DD/MM/AAAA e números formatados como moeda BR
   const exportarExcel = () => {
     const data = [
       ['NF', 'Fornecedor', 'Emissão', 'Vencimento', 'Pagamento', 'Valor Total', 'Valor Pago'],
       ...notasFiltradas.map(n => [
         n.numero_nota || '—',
         n.fornecedores?.nome_fantasia || '—',
-        n.data_emissao || '—',
-        n.data_vencimento || '—',
-        n.data_pagamento || '—',
+        formatarDataBR(n.data_emissao),
+        formatarDataBR(n.data_vencimento),
+        formatarDataBR(n.data_pagamento),
         valorOuZero(n.valor_total),
         valorOuZero(n.valor_pago)
       ])
     ];
 
     const ws = XLSX.utils.aoa_to_sheet(data);
-    ws['!cols'] = [{ wch: 12 }, { wch: 30 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 18 }];
+    
+    // ✅ Ajustar largura das colunas
+    ws['!cols'] = [
+      { wch: 12 },  // NF
+      { wch: 30 },  // Fornecedor
+      { wch: 12 },  // Emissão
+      { wch: 12 },  // Vencimento
+      { wch: 12 },  // Pagamento
+      { wch: 18 },  // Valor Total
+      { wch: 18 }   // Valor Pago
+    ];
+    
+    // ✅ Aplicar formatação de moeda brasileira nas colunas 6 e 7 (índices 5 e 6)
+    // Formato: R$ #.##0,00
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    for (let R = range.s.r + 1; R <= range.e.r; R++) {
+      for (let C = 5; C <= 6; C++) {
+        const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+        if (ws[cellAddress]) {
+          ws[cellAddress].z = 'R$ #.##0,00'; // ✅ Formato monetário brasileiro
+          ws[cellAddress].t = 'n'; // ✅ Tipo numérico
+        }
+      }
+    }
+    
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Contas Pagas');
     XLSX.writeFile(wb, `contas-pagas-${obraNome.replace(/\s+/g, '-')}.xlsx`);
@@ -244,11 +277,13 @@ export default function RelatorioContasPagas() {
                 <tr key={n.id}>
                   <td className="px-4 py-2">{n.numero_nota || '—'}</td>
                   <td className="px-4 py-2">{n.fornecedores?.nome_fantasia || '—'}</td>
-                  <td className="px-4 py-2 text-center">{n.data_emissao || '—'}</td>
-                  <td className="px-4 py-2 text-center">{n.data_vencimento || '—'}</td>
-                  <td className="px-4 py-2 text-center">{n.data_pagamento || '—'}</td>
-                  <td className="px-4 py-2 text-right">{formatarMoeda(n.valor_total)}</td>
-                  <td className="px-4 py-2 text-right font-bold text-blue-700">{formatarMoeda(n.valor_pago)}</td>
+                  {/* ✅ Datas formatadas como DD/MM/AAAA */}
+                  <td className="px-4 py-2 text-center">{formatarDataBR(n.data_emissao)}</td>
+                  <td className="px-4 py-2 text-center">{formatarDataBR(n.data_vencimento)}</td>
+                  <td className="px-4 py-2 text-center">{formatarDataBR(n.data_pagamento)}</td>
+                  {/* ✅ Valores formatados como moeda */}
+                  <td className="px-4 py-2 text-right">{formatarMoedaBR(n.valor_total)}</td>
+                  <td className="px-4 py-2 text-right font-bold text-blue-700">{formatarMoedaBR(n.valor_pago)}</td>
                 </tr>
               ))
             )}
