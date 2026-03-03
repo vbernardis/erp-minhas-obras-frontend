@@ -21,7 +21,8 @@ interface ServicoOrcamento {
 }
 
 interface ItemNota {
-  id: number;
+  id: number;              // ID temporário (frontend) ou do banco (se existir)
+  db_id?: number | null;   // ID real do banco (para itens existentes)
   descricao: string;
   unidade: string;
   quantidade: number;
@@ -41,7 +42,6 @@ export default function EditarNotaFiscal() {
   const [servicos, setServicos] = useState<ServicoOrcamento[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ✅ Estado principal do formulário (igual ao NovaNotaFiscal)
   const [formData, setFormData] = useState({
     obra_id: '',
     fornecedor_id: '',
@@ -51,22 +51,24 @@ export default function EditarNotaFiscal() {
     data_pagamento: '',
     forma_pagamento: '',
     frete: 0,
-    desconto: 0, // ✅ Adicionado
+    desconto: 0,
     status: 'pendente'
   });
 
   const [itens, setItens] = useState<ItemNota[]>([]);
-
-  // ✅ Estados para digitação com vírgula
   const [freteEmEdicao, setFreteEmEdicao] = useState<string | undefined>(undefined);
   const [descontoEmEdicao, setDescontoEmEdicao] = useState<string | undefined>(undefined);
   const [valorEmEdicao, setValorEmEdicao] = useState<Record<string, string>>({});
 
+  const isPago = formData.status === 'pago';
+
+  // ✅ Converte número para input com vírgula
   const numeroParaInput = (valor: number | undefined | null): string => {
     if (valor == null || isNaN(valor)) return '';
     return valor.toString().replace('.', ',');
   };
 
+  // ✅ Converte input com vírgula para número
   const stringParaNumero = (valor: string): number => {
     if (!valor) return 0;
     const numStr = valor.replace(',', '.');
@@ -74,21 +76,22 @@ export default function EditarNotaFiscal() {
     return isNaN(parsed) ? 0 : parsed;
   };
 
-  // ✅ Verificar se NF está paga (bloqueia edição)
-  const isPago = formData.status === 'pago';
-
-  // Carregar dados
+  // ✅ Carregar dados da nota e listas auxiliares
   useEffect(() => {
     const carregarDados = async () => {
       try {
         const [obrasRes, fornecedoresRes, notaRes] = await Promise.all([
+          // ✅ URLs corrigidas (sem espaços)
           axios.get<Obra[]>('https://erp-minhas-obras-backend.onrender.com/obras'),
           axios.get<Fornecedor[]>('https://erp-minhas-obras-backend.onrender.com/fornecedores'),
           axios.get<any>(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/${notaId}`)
         ]);
         setObras(obrasRes.data);
         setFornecedores(fornecedoresRes.data);
+        
         const nota = notaRes.data;
+        
+        // Preencher formulário principal
         setFormData({
           obra_id: nota.obra_id?.toString() || '',
           fornecedor_id: nota.fornecedor_id?.toString() || '',
@@ -98,11 +101,14 @@ export default function EditarNotaFiscal() {
           data_pagamento: nota.data_pagamento || '',
           forma_pagamento: nota.forma_pagamento || '',
           frete: nota.frete || 0,
-          desconto: nota.desconto || 0, // ✅ Inclui desconto
+          desconto: nota.desconto || 0,
           status: nota.status || 'pendente'
         });
-        setItens(Array.isArray(nota.itens) ? nota.itens.map((item: any, idx: number) => ({
-          id: idx,
+
+        // ✅ Carregar itens PRESERVANDO os IDs do banco
+        const itensCarregados = Array.isArray(nota.itens) ? nota.itens.map((item: any, idx: number) => ({
+          id: item.id || Date.now() + idx,      // ID para frontend (se não tiver, gera temporário)
+          db_id: item.id || null,                // ID real do banco (para update/delete)
           descricao: item.descricao || '',
           unidade: item.unidade || '',
           quantidade: item.quantidade || 1,
@@ -110,7 +116,9 @@ export default function EditarNotaFiscal() {
           imposto: item.imposto || 0,
           preco_total: item.preco_total || 0,
           orcamento_item_id: item.orcamento_item_id || null
-        })) : []);
+        })) : [];
+        setItens(itensCarregados);
+
       } catch (err) {
         alert('Erro ao carregar nota fiscal.');
         navigate('/financeiro');
@@ -119,29 +127,33 @@ export default function EditarNotaFiscal() {
       }
     };
     if (notaId) carregarDados();
-  }, [id]);
+  }, [id, notaId, navigate]);
 
-  // Carregar serviços da obra
+  // ✅ Carregar serviços da obra selecionada
   useEffect(() => {
     if (formData.obra_id) {
       axios.get<ServicoOrcamento[]>(`https://erp-minhas-obras-backend.onrender.com/obras/${formData.obra_id}/servicos-orcamento`)
         .then(res => setServicos(res.data))
-        .catch(err => setServicos([]));
+        .catch(() => setServicos([]));
     } else {
       setServicos([]);
     }
   }, [formData.obra_id]);
 
+  // ✅ Atualizar item e recalcular total CORRETAMENTE
   const atualizarItem = (id: number, campo: keyof ItemNota, valor: any) => {
-    if (isPago) return; // ✅ Bloqueia se pago
+    if (isPago) return;
+    
     setItens(itens.map(item => {
       if (item.id === id) {
         const novoItem = { ...item, [campo]: valor };
+        
+        // ✅ Recalcular preco_total: (qtd * valor_unit) + imposto
         if (campo === 'quantidade' || campo === 'preco_unit' || campo === 'imposto') {
           const qtd = novoItem.quantidade || 0;
           const unit = novoItem.preco_unit || 0;
           const imp = novoItem.imposto || 0;
-          novoItem.preco_total = qtd * unit + imp;
+          novoItem.preco_total = (qtd * unit) + imp;
         }
         return novoItem;
       }
@@ -153,6 +165,7 @@ export default function EditarNotaFiscal() {
     if (isPago) return;
     setItens([...itens, { 
       id: Date.now(), 
+      db_id: null,                    // Novo item não tem ID do banco ainda
       descricao: '', 
       unidade: '', 
       quantidade: 1, 
@@ -166,6 +179,7 @@ export default function EditarNotaFiscal() {
   const removerItem = (id: number) => {
     if (isPago || itens.length <= 1) return;
     setItens(itens.filter(item => item.id !== id));
+    // Limpar estados de edição
     setValorEmEdicao(prev => {
       const novo = { ...prev };
       delete novo[`qtd_${id}`];
@@ -175,6 +189,7 @@ export default function EditarNotaFiscal() {
     });
   };
 
+  // ✅ Salvar alterações com lógica correta para itens
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -183,14 +198,18 @@ export default function EditarNotaFiscal() {
       return;
     }
 
+    // Calcular valor total: soma dos itens + frete - desconto
     const totalItens = itens.reduce((sum, item) => sum + (item.preco_total || 0), 0);
-    const valorTotal = totalItens + (formData.frete || 0) - (formData.desconto || 0); // ✅ Inclui desconto
+    const valorTotal = totalItens + (formData.frete || 0) - (formData.desconto || 0);
 
     try {
-      await axios.put(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/${notaId}`, {
+      // ✅ Preparar payload com estrutura que o backend espera
+      const payload = {
         ...formData,
         valor_total: valorTotal,
+        // ✅ Enviar itens com estrutura completa, incluindo db_id para update
         itens: itens.map(item => ({
+          id: item.db_id,              // ID do banco (null = novo item)
           descricao: item.descricao,
           unidade: item.unidade,
           quantidade: item.quantidade,
@@ -199,17 +218,22 @@ export default function EditarNotaFiscal() {
           preco_total: item.preco_total,
           orcamento_item_id: item.orcamento_item_id
         }))
-      });
+      };
+
+      // ✅ URL corrigida (sem espaços)
+      await axios.put(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/${notaId}`, payload);
+      
       alert('Nota fiscal atualizada com sucesso!');
       navigate('/financeiro');
+      
     } catch (err: any) {
-      alert('Erro ao atualizar nota fiscal: ' + (err.response?.data?.error || err.message));
+      const msg = err.response?.data?.error || err.message || 'Erro desconhecido';
+      alert('Erro ao atualizar nota fiscal: ' + msg);
+      console.error('Erro detalhado:', err);
     }
   };
 
-  if (loading) {
-    return <div className="p-6">Carregando...</div>;
-  }
+  if (loading) return <div className="p-6 text-center">Carregando...</div>;
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -226,14 +250,14 @@ export default function EditarNotaFiscal() {
         </h1>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Obra e Fornecedor */}
+          {/* Obra e Fornecedor - BLOQUEADOS */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Obra *</label>
               <select
                 value={formData.obra_id}
                 onChange={e => setFormData({ ...formData, obra_id: e.target.value })}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
                 required
                 disabled
               >
@@ -248,7 +272,7 @@ export default function EditarNotaFiscal() {
               <select
                 value={formData.fornecedor_id}
                 onChange={e => setFormData({ ...formData, fornecedor_id: e.target.value })}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
                 required
                 disabled
               >
@@ -333,7 +357,7 @@ export default function EditarNotaFiscal() {
             </div>
           </div>
 
-          {/* ✅ Campos de Frete e Desconto (com vírgula) */}
+          {/* Frete e Desconto com formatação de vírgula */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Valor do Frete (R$)</label>
@@ -341,8 +365,7 @@ export default function EditarNotaFiscal() {
                 type="text"
                 value={freteEmEdicao !== undefined ? freteEmEdicao : (formData.frete > 0 ? formData.frete.toString().replace('.', ',') : '')}
                 onChange={(e) => {
-                  let valor = e.target.value;
-                  valor = valor.replace(/[^0-9,]/g, '');
+                  let valor = e.target.value.replace(/[^0-9,]/g, '');
                   const partes = valor.split(',');
                   if (partes.length > 2) valor = partes[0] + ',' + partes[1];
                   if (valor.startsWith(',')) valor = '0' + valor;
@@ -350,7 +373,7 @@ export default function EditarNotaFiscal() {
                 }}
                 onBlur={(e) => {
                   let valor = freteEmEdicao || e.target.value;
-                  if (valor === '') {
+                  if (!valor) {
                     setFormData({ ...formData, frete: 0 });
                     setFreteEmEdicao('');
                     return;
@@ -371,8 +394,7 @@ export default function EditarNotaFiscal() {
                 type="text"
                 value={descontoEmEdicao !== undefined ? descontoEmEdicao : (formData.desconto > 0 ? formData.desconto.toString().replace('.', ',') : '')}
                 onChange={(e) => {
-                  let valor = e.target.value;
-                  valor = valor.replace(/[^0-9,]/g, '');
+                  let valor = e.target.value.replace(/[^0-9,]/g, '');
                   const partes = valor.split(',');
                   if (partes.length > 2) valor = partes[0] + ',' + partes[1];
                   if (valor.startsWith(',')) valor = '0' + valor;
@@ -380,7 +402,7 @@ export default function EditarNotaFiscal() {
                 }}
                 onBlur={(e) => {
                   let valor = descontoEmEdicao || e.target.value;
-                  if (valor === '') {
+                  if (!valor) {
                     setFormData({ ...formData, desconto: 0 });
                     setDescontoEmEdicao('');
                     return;
@@ -402,11 +424,7 @@ export default function EditarNotaFiscal() {
             <div className="flex justify-between items-center mb-2">
               <label className="block text-sm font-medium text-gray-700">Itens da Nota Fiscal</label>
               {!isPago && (
-                <button
-                  type="button"
-                  onClick={adicionarItem}
-                  className="text-sm text-blue-600 flex items-center"
-                >
+                <button type="button" onClick={adicionarItem} className="text-sm text-blue-600 flex items-center">
                   <FiPlus className="mr-1" /> Adicionar Item
                 </button>
               )}
@@ -421,7 +439,7 @@ export default function EditarNotaFiscal() {
                     <th className="px-3 py-2">Vlr Unit.</th>
                     <th className="px-3 py-2">Impostos</th>
                     <th className="px-3 py-2">Total</th>
-                    <th className="px-3 py-2">Apropriação (Serviço do Orçamento)</th>
+                    <th className="px-3 py-2">Apropriação</th>
                     {!isPago && <th className="px-3 py-2"></th>}
                   </tr>
                 </thead>
@@ -429,163 +447,63 @@ export default function EditarNotaFiscal() {
                   {itens.map((item) => (
                     <tr key={item.id} className="border-b border-gray-200">
                       <td className="px-3 py-2">
-                        <input
-                          type="text"
-                          value={item.descricao}
-                          onChange={e => atualizarItem(item.id, 'descricao', e.target.value)}
-                          className="w-full text-sm px-2 py-1 border border-gray-300 rounded"
-                          required
-                          disabled={isPago}
-                        />
+                        <input type="text" value={item.descricao} onChange={e => atualizarItem(item.id, 'descricao', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded" required disabled={isPago} />
                       </td>
                       <td className="px-3 py-2">
-                        <input
-                          type="text"
-                          value={item.unidade}
-                          onChange={e => atualizarItem(item.id, 'unidade', e.target.value)}
-                          className="w-16 text-sm px-2 py-1 border border-gray-300 rounded"
-                          placeholder="m²"
-                          required
-                          disabled={isPago}
-                        />
+                        <input type="text" value={item.unidade} onChange={e => atualizarItem(item.id, 'unidade', e.target.value)} className="w-16 text-sm px-2 py-1 border border-gray-300 rounded" placeholder="m²" required disabled={isPago} />
                       </td>
                       <td className="px-3 py-2">
-                        <input
-                          type="text"
-                          value={
-                            valorEmEdicao[`qtd_${item.id}`] !== undefined
-                              ? valorEmEdicao[`qtd_${item.id}`]
-                              : numeroParaInput(item.quantidade)
-                          }
-                          onChange={(e) => {
-                            let valor = e.target.value;
-                            valor = valor.replace(/[^0-9,]/g, '');
-                            const partes = valor.split(',');
-                            if (partes.length > 2) valor = partes[0] + ',' + partes[1];
-                            if (valor.startsWith(',')) valor = '0' + valor;
-                            setValorEmEdicao(prev => ({ ...prev, [`qtd_${item.id}`]: valor }));
-                          }}
-                          onBlur={(e) => {
-                            const raw = valorEmEdicao[`qtd_${item.id}`] || '';
-                            let num = 1;
-                            if (raw) {
-                              const numStr = raw.replace(',', '.');
-                              const parsed = parseFloat(numStr);
-                              if (!isNaN(parsed) && parsed >= 1) num = parsed;
-                            }
-                            atualizarItem(item.id, 'quantidade', num);
-                            setValorEmEdicao(prev => {
-                              const novo = { ...prev };
-                              delete novo[`qtd_${item.id}`];
-                              return novo;
-                            });
-                          }}
-                          className="w-20 text-sm px-2 py-1 border border-gray-300 rounded"
-                          required
-                          disabled={isPago}
-                        />
+                        <input type="text" value={valorEmEdicao[`qtd_${item.id}`] ?? numeroParaInput(item.quantidade)} onChange={(e) => {
+                          let v = e.target.value.replace(/[^0-9,]/g, '');
+                          const p = v.split(','); if (p.length > 2) v = p[0] + ',' + p[1];
+                          if (v.startsWith(',')) v = '0' + v;
+                          setValorEmEdicao(prev => ({ ...prev, [`qtd_${item.id}`]: v }));
+                        }} onBlur={(e) => {
+                          const raw = valorEmEdicao[`qtd_${item.id}`] || '';
+                          let num = raw ? parseFloat(raw.replace(',', '.')) : 1;
+                          if (isNaN(num) || num < 1) num = 1;
+                          atualizarItem(item.id, 'quantidade', num);
+                          setValorEmEdicao(prev => { const n = { ...prev }; delete n[`qtd_${item.id}`]; return n; });
+                        }} className="w-20 text-sm px-2 py-1 border border-gray-300 rounded" required disabled={isPago} />
                       </td>
                       <td className="px-3 py-2">
-                        <input
-                          type="text"
-                          value={
-                            valorEmEdicao[`unit_${item.id}`] !== undefined
-                              ? valorEmEdicao[`unit_${item.id}`]
-                              : numeroParaInput(item.preco_unit)
-                          }
-                          onChange={(e) => {
-                            let valor = e.target.value;
-                            valor = valor.replace(/[^0-9,]/g, '');
-                            const partes = valor.split(',');
-                            if (partes.length > 2) valor = partes[0] + ',' + partes[1];
-                            if (valor.startsWith(',')) valor = '0' + valor;
-                            setValorEmEdicao(prev => ({ ...prev, [`unit_${item.id}`]: valor }));
-                          }}
-                          onBlur={(e) => {
-                            const raw = valorEmEdicao[`unit_${item.id}`] || '';
-                            let num = 0;
-                            if (raw) {
-                              const numStr = raw.replace(',', '.');
-                              const parsed = parseFloat(numStr);
-                              if (!isNaN(parsed) && parsed >= 0) num = parsed;
-                            }
-                            atualizarItem(item.id, 'preco_unit', num);
-                            setValorEmEdicao(prev => {
-                              const novo = { ...prev };
-                              delete novo[`unit_${item.id}`];
-                              return novo;
-                            });
-                          }}
-                          className="w-24 text-sm px-2 py-1 border border-gray-300 rounded"
-                          required
-                          disabled={isPago}
-                        />
+                        <input type="text" value={valorEmEdicao[`unit_${item.id}`] ?? numeroParaInput(item.preco_unit)} onChange={(e) => {
+                          let v = e.target.value.replace(/[^0-9,]/g, '');
+                          const p = v.split(','); if (p.length > 2) v = p[0] + ',' + p[1];
+                          if (v.startsWith(',')) v = '0' + v;
+                          setValorEmEdicao(prev => ({ ...prev, [`unit_${item.id}`]: v }));
+                        }} onBlur={(e) => {
+                          const raw = valorEmEdicao[`unit_${item.id}`] || '';
+                          let num = raw ? parseFloat(raw.replace(',', '.')) : 0;
+                          if (isNaN(num) || num < 0) num = 0;
+                          atualizarItem(item.id, 'preco_unit', num);
+                          setValorEmEdicao(prev => { const n = { ...prev }; delete n[`unit_${item.id}`]; return n; });
+                        }} className="w-24 text-sm px-2 py-1 border border-gray-300 rounded" required disabled={isPago} />
                       </td>
                       <td className="px-3 py-2">
-                        <input
-                          type="text"
-                          value={
-                            valorEmEdicao[`imp_${item.id}`] !== undefined
-                              ? valorEmEdicao[`imp_${item.id}`]
-                              : numeroParaInput(item.imposto)
-                          }
-                          onChange={(e) => {
-                            let valor = e.target.value;
-                            valor = valor.replace(/[^0-9,]/g, '');
-                            const partes = valor.split(',');
-                            if (partes.length > 2) valor = partes[0] + ',' + partes[1];
-                            if (valor.startsWith(',')) valor = '0' + valor;
-                            setValorEmEdicao(prev => ({ ...prev, [`imp_${item.id}`]: valor }));
-                          }}
-                          onBlur={(e) => {
-                            const raw = valorEmEdicao[`imp_${item.id}`] || '';
-                            let num = 0;
-                            if (raw) {
-                              const numStr = raw.replace(',', '.');
-                              const parsed = parseFloat(numStr);
-                              if (!isNaN(parsed) && parsed >= 0) num = parsed;
-                            }
-                            atualizarItem(item.id, 'imposto', num);
-                            setValorEmEdicao(prev => {
-                              const novo = { ...prev };
-                              delete novo[`imp_${item.id}`];
-                              return novo;
-                            });
-                          }}
-                          className="w-24 text-sm px-2 py-1 border border-gray-300 rounded"
-                          disabled={isPago}
-                        />
+                        <input type="text" value={valorEmEdicao[`imp_${item.id}`] ?? numeroParaInput(item.imposto)} onChange={(e) => {
+                          let v = e.target.value.replace(/[^0-9,]/g, '');
+                          const p = v.split(','); if (p.length > 2) v = p[0] + ',' + p[1];
+                          if (v.startsWith(',')) v = '0' + v;
+                          setValorEmEdicao(prev => ({ ...prev, [`imp_${item.id}`]: v }));
+                        }} onBlur={(e) => {
+                          const raw = valorEmEdicao[`imp_${item.id}`] || '';
+                          let num = raw ? parseFloat(raw.replace(',', '.')) : 0;
+                          if (isNaN(num) || num < 0) num = 0;
+                          atualizarItem(item.id, 'imposto', num);
+                          setValorEmEdicao(prev => { const n = { ...prev }; delete n[`imp_${item.id}`]; return n; });
+                        }} className="w-24 text-sm px-2 py-1 border border-gray-300 rounded" disabled={isPago} />
                       </td>
-                      <td className="px-3 py-2 text-sm font-medium">
-                        R$ {item.preco_total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </td>
+                      <td className="px-3 py-2 text-sm font-medium">R$ {item.preco_total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                       <td className="px-3 py-2">
-                        <select
-                          value={item.orcamento_item_id || ''}
-                          onChange={e => atualizarItem(item.id, 'orcamento_item_id', e.target.value ? Number(e.target.value) : null)}
-                          className="w-full text-sm px-2 py-1 border border-gray-300 rounded"
-                          required
-                          disabled={isPago}
-                        >
-                          <option value="">Selecione um serviço</option>
-                          {servicos.map(servico => (
-                            <option key={servico.id} value={servico.id}>
-                              {servico.codigo} - {servico.descricao}
-                            </option>
-                          ))}
+                        <select value={item.orcamento_item_id || ''} onChange={e => atualizarItem(item.id, 'orcamento_item_id', e.target.value ? Number(e.target.value) : null)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded" required disabled={isPago}>
+                          <option value="">Selecione</option>
+                          {servicos.map(s => <option key={s.id} value={s.id}>{s.codigo} - {s.descricao}</option>)}
                         </select>
                       </td>
                       {!isPago && (
                         <td className="px-3 py-2">
-                          {itens.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => removerItem(item.id)}
-                              className="text-red-600 hover:text-red-800"
-                            >
-                              <FiTrash className="w-4 h-4" />
-                            </button>
-                          )}
+                          {itens.length > 1 && <button type="button" onClick={() => removerItem(item.id)} className="text-red-600 hover:text-red-800"><FiTrash className="w-4 h-4" /></button>}
                         </td>
                       )}
                     </tr>
@@ -595,50 +513,24 @@ export default function EditarNotaFiscal() {
             </div>
           </div>
 
-                    {/* ✅ TOTALIZADOR VISUAL */}
+          {/* Totalizador Visual */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <h3 className="text-lg font-bold text-blue-800 mb-2">Resumo da Nota Fiscal</h3>
             <div className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span>Total dos Itens:</span>
-                <span className="font-medium">R$ {itens.reduce((sum, item) => sum + (item.preco_total || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Frete:</span>
-                <span className="font-medium">R$ {formData.frete.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Desconto:</span>
-                <span className="font-medium text-red-600">- R$ {formData.desconto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              </div>
+              <div className="flex justify-between"><span>Total dos Itens:</span><span className="font-medium">R$ {itens.reduce((s, i) => s + (i.preco_total || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
+              <div className="flex justify-between"><span>Frete:</span><span className="font-medium">R$ {formData.frete.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
+              <div className="flex justify-between"><span>Desconto:</span><span className="font-medium text-red-600">- R$ {formData.desconto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
               <div className="border-t border-blue-300 pt-2 mt-2 flex justify-between font-bold text-lg text-blue-900">
                 <span>Valor Total:</span>
-                <span>
-                  R$ {(
-                    itens.reduce((sum, item) => sum + (item.preco_total || 0), 0) +
-                    (formData.frete || 0) -
-                    (formData.desconto || 0)
-                  ).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
+                <span>R$ {(itens.reduce((s, i) => s + (i.preco_total || 0), 0) + (formData.frete || 0) - (formData.desconto || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
               </div>
             </div>
           </div>
 
           {!isPago && (
             <div className="flex gap-3 pt-4">
-              <button
-                type="submit"
-                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition"
-              >
-                Salvar Alterações
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate('/financeiro')}
-                className="px-6 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-lg transition"
-              >
-                Cancelar
-              </button>
+              <button type="submit" className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition">Salvar Alterações</button>
+              <button type="button" onClick={() => navigate('/financeiro')} className="px-6 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-lg transition">Cancelar</button>
             </div>
           )}
         </form>
