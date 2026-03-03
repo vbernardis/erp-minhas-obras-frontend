@@ -24,29 +24,6 @@ const formatCurrency = (value: number): string => {
   }).format(value);
 };
 
-const formatInputNumber = (value: string): string => {
-  let cleaned = value.replace(/\D/g, '');
-  if (cleaned === '') return '';
-  if (cleaned.length > 17) cleaned = cleaned.slice(0, 17);
-
-  let integerPart = cleaned;
-  let decimalPart = '';
-
-  if (cleaned.length > 2) {
-    decimalPart = cleaned.slice(-2);
-    integerPart = cleaned.slice(0, -2);
-  } else if (cleaned.length === 1) {
-    decimalPart = '0' + cleaned;
-    integerPart = '0';
-  } else if (cleaned.length === 2) {
-    decimalPart = cleaned;
-    integerPart = '0';
-  }
-
-  integerPart = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return `${integerPart},${decimalPart}`;
-};
-
 const parseToFloat = (value: string): number => {
   if (!value) return 0;
   return parseFloat(value.replace(/\./g, '').replace(',', '.'));
@@ -61,15 +38,20 @@ export default function BaixaNotaFiscal() {
   const [dataPagamento, setDataPagamento] = useState('');
   const [jurosInput, setJurosInput] = useState('');
   const [descontoInput, setDescontoInput] = useState('');
+  
+  // ✅ NOVOS CAMPOS
+  const [impostosRetidosInput, setImpostosRetidosInput] = useState('');
+  const [obsImpostos, setObsImpostos] = useState('');
+  
   const [observacoes, setObservacoes] = useState('');
   const usuarioLogado = getUsuarioLogado();
 
   useEffect(() => {
     const fetchNota = async () => {
       try {
+        // ✅ URL corrigida (sem espaços extras)
         const response = await axios.get(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/${notaId}`);
         setNota(response.data);
-        // Se a nota já tiver data_pagamento, use-a como valor inicial no campo
         if (response.data.data_pagamento) {
           setDataPagamento(response.data.data_pagamento);
         }
@@ -91,8 +73,11 @@ export default function BaixaNotaFiscal() {
 
     const juros = parseToFloat(jurosInput);
     const desconto = parseToFloat(descontoInput);
+    const impostosRetidos = parseToFloat(impostosRetidosInput); // ✅ Novo campo
     const valorOriginal = parseFloat(nota.valor_total);
-    const valorPago = valorOriginal + juros - desconto;
+    
+    // ✅ CÁLCULO ATUALIZADO: subtrai impostos retidos
+    const valorPago = valorOriginal + juros - desconto - impostosRetidos;
 
     if (valorPago <= 0) {
       alert('O valor pago deve ser maior que zero.');
@@ -100,10 +85,13 @@ export default function BaixaNotaFiscal() {
     }
 
     try {
+      // ✅ URL corrigida + novos campos enviados
       await axios.post(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/${notaId}/baixa`, {
         data_pagamento: dataPagamento,
         juros: juros,
         desconto: desconto,
+        impostos_retidos: impostosRetidos,  // ✅ Novo campo
+        obs_impostos: obsImpostos,           // ✅ Novo campo
         observacoes: observacoes,
         usuario_baixa: usuarioLogado
       });
@@ -121,9 +109,11 @@ export default function BaixaNotaFiscal() {
   const valorOriginal = parseFloat(nota.valor_total);
   const juros = parseToFloat(jurosInput);
   const desconto = parseToFloat(descontoInput);
-  const valorCalculado = valorOriginal + juros - desconto;
+  const impostosRetidos = parseToFloat(impostosRetidosInput);
+  
+  // ✅ CÁLCULO ATUALIZADO para exibição
+  const valorCalculado = valorOriginal + juros - desconto - impostosRetidos;
 
-  // Função para formatar data YYYY-MM-DD para DD/MM/YYYY
   const formatarDataParaExibicao = (dataISO: string | null | undefined): string => {
     if (!dataISO) return '—';
     const [ano, mes, dia] = dataISO.split('-');
@@ -139,20 +129,17 @@ export default function BaixaNotaFiscal() {
         <FiArrowLeft className="mr-2" /> Voltar
       </button>
 
-            <div className="bg-white rounded-xl shadow-md p-6 mb-6">
+      <div className="bg-white rounded-xl shadow-md p-6 mb-6">
         <h2 className="text-lg font-bold text-gray-800 mb-3">Dados da Nota Fiscal</h2>
         <div className="text-sm space-y-1">
-          {/* ✅ Corrigido: Acessa o nome do fornecedor dentro do objeto aninhado */}
           <div><span className="font-medium">Fornecedor:</span> {nota.fornecedores?.nome_fantasia || '—'}</div>
           <div><span className="font-medium">Nº da Nota:</span> {nota.numero_nota}</div>
           <div>
-  <span className="font-medium">
-    {/* ✅ Alteração: Exibe rótulo apropriado */}
-    {nota.data_pagamento ? 'Data de Pagamento:' : 'Vencimento:'}
-  </span>{' '}
-  {/* ✅ Corrigido: Exibe a data formatada como DD/MM/YYYY sem conversão de fuso */}
-  {nota.data_pagamento ? formatarDataParaExibicao(nota.data_pagamento) : formatarDataParaExibicao(nota.data_vencimento)}
-</div>
+            <span className="font-medium">
+              {nota.data_pagamento ? 'Data de Pagamento:' : 'Vencimento:'}
+            </span>{' '}
+            {nota.data_pagamento ? formatarDataParaExibicao(nota.data_pagamento) : formatarDataParaExibicao(nota.data_vencimento)}
+          </div>
           <div><span className="font-medium">Valor Original:</span> {formatCurrency(valorOriginal)}</div>
         </div>
       </div>
@@ -173,45 +160,74 @@ export default function BaixaNotaFiscal() {
           </div>
 
           <div>
-  <label className="block text-sm font-medium mb-1">Juros (R$)</label>
-  <input
-    type="text"
-    value={jurosInput}
-    onChange={(e) => {
-      let value = e.target.value;
-      // Remove tudo que não é dígito ou vírgula
-      value = value.replace(/[^\d,]/g, '');
-      // Garante no máximo uma vírgula
-      const parts = value.split(',');
-      if (parts.length > 2) {
-        value = parts[0] + ',' + parts[1];
-      }
-      // Não formata com ponto de milhar durante a digitação (evita pular cursor)
-      setJurosInput(value);
-    }}
-    placeholder="0,00"
-    className="w-full p-2 border rounded"
-  />
-</div>
+            <label className="block text-sm font-medium mb-1">Juros (R$)</label>
+            <input
+              type="text"
+              value={jurosInput}
+              onChange={(e) => {
+                let value = e.target.value;
+                value = value.replace(/[^\d,]/g, '');
+                const parts = value.split(',');
+                if (parts.length > 2) {
+                  value = parts[0] + ',' + parts[1];
+                }
+                setJurosInput(value);
+              }}
+              placeholder="0,00"
+              className="w-full p-2 border rounded"
+            />
+          </div>
 
-<div>
-  <label className="block text-sm font-medium mb-1">Desconto (R$)</label>
-  <input
-    type="text"
-    value={descontoInput}
-    onChange={(e) => {
-      let value = e.target.value;
-      value = value.replace(/[^\d,]/g, '');
-      const parts = value.split(',');
-      if (parts.length > 2) {
-        value = parts[0] + ',' + parts[1];
-      }
-      setDescontoInput(value);
-    }}
-    placeholder="0,00"
-    className="w-full p-2 border rounded"
-  />
-</div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Desconto (R$)</label>
+            <input
+              type="text"
+              value={descontoInput}
+              onChange={(e) => {
+                let value = e.target.value;
+                value = value.replace(/[^\d,]/g, '');
+                const parts = value.split(',');
+                if (parts.length > 2) {
+                  value = parts[0] + ',' + parts[1];
+                }
+                setDescontoInput(value);
+              }}
+              placeholder="0,00"
+              className="w-full p-2 border rounded"
+            />
+          </div>
+
+          {/* ✅ NOVO CAMPO: Impostos Retidos */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Impostos Retidos (R$)</label>
+            <input
+              type="text"
+              value={impostosRetidosInput}
+              onChange={(e) => {
+                let value = e.target.value;
+                value = value.replace(/[^\d,]/g, '');
+                const parts = value.split(',');
+                if (parts.length > 2) {
+                  value = parts[0] + ',' + parts[1];
+                }
+                setImpostosRetidosInput(value);
+              }}
+              placeholder="0,00"
+              className="w-full p-2 border rounded"
+            />
+          </div>
+
+          {/* ✅ NOVO CAMPO: Obs. dos Impostos */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Obs. dos Impostos</label>
+            <input
+              type="text"
+              value={obsImpostos}
+              onChange={(e) => setObsImpostos(e.target.value)}
+              placeholder="Informe detalhes dos impostos retidos"
+              className="w-full p-2 border rounded"
+            />
+          </div>
 
           <div className="bg-blue-50 p-3 rounded">
             <div className="text-sm">
