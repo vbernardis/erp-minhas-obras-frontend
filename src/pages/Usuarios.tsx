@@ -41,7 +41,7 @@ export default function Usuarios() {
   // Função para carregar a lista de obras
   const carregarObras = async () => {
     try {
-      const resposta = await axios.get<Obra[]>('http://localhost:3001/obras');
+      const resposta = await axios.get<Obra[]>('https://erp-minhas-obras-backend.onrender.com/obras');
       setObras(resposta.data);
     } catch (erro) {
       console.error('Erro ao carregar obras:', erro);
@@ -51,7 +51,7 @@ export default function Usuarios() {
   const carregarUsuarios = async () => {
     setLoading(true);
     try {
-      const resposta = await axios.get<Usuario[]>('http://localhost:3001/users');
+      const resposta = await axios.get<Usuario[]>('https://erp-minhas-obras-backend.onrender.com/users');
       setUsuarios(resposta.data);
     } catch (erro) {
       alert('Erro ao carregar usuários: ' + erro);
@@ -76,7 +76,7 @@ export default function Usuarios() {
 
   const handleEdit = async (usuario: Usuario) => {
     try {
-      const resposta = await axios.get(`http://localhost:3001/users/${usuario.id}`);
+      const resposta = await axios.get(`https://erp-minhas-obras-backend.onrender.com/users/${usuario.id}`);
       const dados = resposta.data;
 
       setCurrentUsuario(dados);
@@ -88,12 +88,12 @@ export default function Usuarios() {
       });
 
       // Carregar permissões
-      const permRes = await axios.get(`http://localhost:3001/users/${usuario.id}/permissoes`);
+      const permRes = await axios.get(`https://erp-minhas-obras-backend.onrender.com/users/${usuario.id}/permissoes`);
       const permIds = permRes.data.map((p: any) => p.tela);
       setPermissions(permIds);
 
       // Carregar obras autorizadas → CONVERTER PARA STRING
-      const obraRes = await axios.get(`http://localhost:3001/users/${usuario.id}/obras`);
+      const obraRes = await axios.get(`https://erp-minhas-obras-backend.onrender.com/users/${usuario.id}/obras`);
       const obraIds = obraRes.data.map((o: any) => o.obra_id.toString());
       setObrasAutorizadas(obraIds);
 
@@ -109,7 +109,7 @@ export default function Usuarios() {
     if (!window.confirm('Tem certeza que deseja deletar este usuário?')) return;
 
     try {
-      await axios.delete(`http://localhost:3001/users/${id}`);
+      await axios.delete(`https://erp-minhas-obras-backend.onrender.com/users/${id}`);
       alert('Usuário deletado com sucesso!');
       carregarUsuarios();
     } catch (erro) {
@@ -126,7 +126,7 @@ export default function Usuarios() {
 
       // ✅ RECUPERAR USUÁRIO ATUALIZADO (com permissões corretas)
       const usuarioAtualizado = await axios.get<Usuario>(
-        `http://localhost:3001/users/${novoUsuarioId}`
+        `https://erp-minhas-obras-backend.onrender.com/users/${novoUsuarioId}`
       );
 
       // Atualizar localStorage se for o próprio usuário
@@ -146,7 +146,7 @@ export default function Usuarios() {
     } else {
       // Criar novo usuário
       const resposta = await axios.post(
-        'http://localhost:3001/users',
+        'https://erp-minhas-obras-backend.onrender.com/users',
         {
           name: formData.name,
           email: formData.email,
@@ -158,7 +158,7 @@ export default function Usuarios() {
 
       if (permissions.length > 0) {
         await axios.post(
-          `http://localhost:3001/users/${novoUsuarioId}/permissoes`,
+          `https://erp-minhas-obras-backend.onrender.com/users/${novoUsuarioId}/permissoes`,
           { permissoes: permissions }
         );
       }
@@ -166,14 +166,14 @@ export default function Usuarios() {
       const obrasIds = obrasAutorizadas.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
       if (obrasIds.length > 0) {
         await axios.post(
-          `http://localhost:3001/users/${novoUsuarioId}/obras`,
+          `https://erp-minhas-obras-backend.onrender.com/users/${novoUsuarioId}/obras`,
           { obras: obrasIds }
         );
       }
 
       // ✅ RECUPERAR USUÁRIO CRIADO (com permissões corretas)
       const usuarioCompleto = await axios.get<Usuario>(
-        `http://localhost:3001/users/${novoUsuarioId}`
+        `https://erp-minhas-obras-backend.onrender.com/users/${novoUsuarioId}`
       );
 
       // Atualizar localStorage se for o próprio usuário
