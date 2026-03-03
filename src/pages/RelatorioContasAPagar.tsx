@@ -23,13 +23,25 @@ interface Obra {
   nome: string;
 }
 
-// ✅ Função segura para formatar moeda (aceita null/undefined)
-const formatarMoeda = (valor: number | null | undefined): string => {
+// ✅ Função centralizada para formatar data como DD/MM/AAAA
+const formatarDataBR = (dataISO: string | null | undefined): string => {
+  if (!dataISO) return '—';
+  const partes = dataISO.trim().split(/[-T]/);
+  if (partes.length >= 3) {
+    const [ano, mes, dia] = partes;
+    return `${dia}/${mes}/${ano}`;
+  }
+  return '—';
+};
+
+// ✅ Função para formatar moeda no padrão brasileiro
+const formatarMoedaBR = (valor: number | null | undefined): string => {
   if (valor == null || isNaN(valor)) return 'R$ 0,00';
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
-    minimumFractionDigits: 2
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
   }).format(valor);
 };
 
@@ -38,38 +50,52 @@ const valorOuZero = (valor: number | null | undefined): number => {
   return valor != null && !isNaN(valor) ? valor : 0;
 };
 
-export default function RelatorioContasPagas() {
+export default function RelatorioContasAPagar() {
   const { obraId } = useParams<{ obraId: string }>();
   const navigate = useNavigate();
 
   const [notas, setNotas] = useState<NotaFiscal[]>([]);
   const [obraNome, setObraNome] = useState('Carregando...');
   const [loading, setLoading] = useState(true);
+  
+  // ✅ NOVOS ESTADOS para filtro de período
+  const [dataInicio, setDataInicio] = useState<string>('');
+  const [dataFim, setDataFim] = useState<string>('');
 
   const carregarDados = async () => {
-  try {
-    const [obraRes, todasNotasRes] = await Promise.all([
-      axios.get<Obra>(`https://erp-minhas-obras-backend.onrender.com/obras/${obraId}`),
-      axios.get<NotaFiscal[]>(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais?obra_id=${obraId}`)
-    ]);
-    setObraNome(obraRes.data.nome);
-    // ✅ Filtrar LOCALMENTE as notas com status = "pendente"
-    const statusPermitidos = ['lançada', 'pendente'];
-const notasAPagar = todasNotasRes.data.filter(n => statusPermitidos.includes(n.status));
-    setNotas(notasAPagar);
-  } catch (err) {
-    alert('Erro ao carregar dados.');
-    console.error(err);
-  } finally {
-    setLoading(false);
-  }
-};
+    try {
+      // ✅ URLs corrigidas (sem espaços extras)
+      const [obraRes, todasNotasRes] = await Promise.all([
+        axios.get<Obra>(`https://erp-minhas-obras-backend.onrender.com/obras/${obraId}`),
+        axios.get<NotaFiscal[]>(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais?obra_id=${obraId}`)
+      ]);
+      setObraNome(obraRes.data.nome);
+      // ✅ Filtrar LOCALMENTE as notas com status = "pendente" ou "lançada"
+      const statusPermitidos = ['lançada', 'pendente'];
+      const notasAPagar = todasNotasRes.data.filter(n => statusPermitidos.includes(n.status));
+      setNotas(notasAPagar);
+    } catch (err) {
+      alert('Erro ao carregar dados.');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (obraId) carregarDados();
   }, [obraId]);
 
-  // ✅ Exportar PDF (com proteção)
+  // ✅ Filtrar notas pelo período selecionado (usar data_vencimento para contas a pagar)
+  const notasFiltradas = notas.filter(nota => {
+    const dataReferencia = nota.data_vencimento;
+    if (!dataReferencia) return false;
+    if (dataInicio && dataReferencia < dataInicio) return false;
+    if (dataFim && dataReferencia > dataFim) return false;
+    return true;
+  });
+
+  // ✅ Exportar PDF com datas DD/MM/AAAA e valores formatados
   const exportarPDF = () => {
     const doc = new jsPDF('landscape', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.width;
@@ -77,22 +103,27 @@ const notasAPagar = todasNotasRes.data.filter(n => statusPermitidos.includes(n.s
     doc.setFontSize(16);
     doc.text('ERP MINHAS OBRAS', pageWidth / 2, 15, { align: 'center' });
     doc.setFontSize(14);
-    doc.text('Relatório de Contas Pagas', pageWidth / 2, 25, { align: 'center' });
+    doc.text('Relatório de Contas a Pagar', pageWidth / 2, 25, { align: 'center' });
     doc.setFontSize(11);
     doc.text(`Obra: ${obraNome}`, 20, 35);
+    
+    // ✅ Mostrar período no PDF se filtrado
+    if (dataInicio || dataFim) {
+      doc.text(`Período: ${dataInicio ? formatarDataBR(dataInicio) : '—'} até ${dataFim ? formatarDataBR(dataFim) : '—'}`, 20, 42);
+    }
 
-    const tableData = notas.map(n => [
+    const tableData = notasFiltradas.map(n => [
       n.numero_nota || '—',
       n.fornecedores?.nome_fantasia || '—',
-      n.data_emissao || '—',
-      n.data_vencimento || '—',
-      n.data_pagamento || '—',
-      formatarMoeda(n.valor_total),
-      formatarMoeda(n.valor_pago)
+      formatarDataBR(n.data_emissao),
+      formatarDataBR(n.data_vencimento),
+      formatarDataBR(n.data_pagamento),
+      formatarMoedaBR(n.valor_total),
+      formatarMoedaBR(n.valor_pago)
     ]);
 
     (doc as any).autoTable({
-      startY: 45,
+      startY: dataInicio || dataFim ? 52 : 45,
       head: [['NF', 'Fornecedor', 'Emissão', 'Vencimento', 'Pagamento', 'Valor Total', 'Valor Pago']],
       body: tableData,
       theme: 'grid',
@@ -109,30 +140,59 @@ const notasAPagar = todasNotasRes.data.filter(n => statusPermitidos.includes(n.s
       }
     });
 
-    doc.save(`contas-pagas-${obraNome.replace(/\s+/g, '-')}.pdf`);
+    doc.save(`contas-a-pagar-${obraNome.replace(/\s+/g, '-')}.pdf`);
   };
 
-  // ✅ Exportar Excel (com proteção)
+  // ✅ Exportar Excel com datas DD/MM/AAAA e números formatados como moeda BR
   const exportarExcel = () => {
     const data = [
       ['NF', 'Fornecedor', 'Emissão', 'Vencimento', 'Pagamento', 'Valor Total', 'Valor Pago'],
-      ...notas.map(n => [
+      ...notasFiltradas.map(n => [
         n.numero_nota || '—',
         n.fornecedores?.nome_fantasia || '—',
-        n.data_emissao || '—',
-        n.data_vencimento || '—',
-        n.data_pagamento || '—',
+        formatarDataBR(n.data_emissao),
+        formatarDataBR(n.data_vencimento),
+        formatarDataBR(n.data_pagamento),
         valorOuZero(n.valor_total),
         valorOuZero(n.valor_pago)
       ])
     ];
 
     const ws = XLSX.utils.aoa_to_sheet(data);
-    // Ajustar largura
-    ws['!cols'] = [{ wch: 12 }, { wch: 30 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 18 }];
+    
+    // ✅ Ajustar largura das colunas
+    ws['!cols'] = [
+      { wch: 12 },  // NF
+      { wch: 30 },  // Fornecedor
+      { wch: 12 },  // Emissão
+      { wch: 12 },  // Vencimento
+      { wch: 12 },  // Pagamento
+      { wch: 18 },  // Valor Total
+      { wch: 18 }   // Valor Pago
+    ];
+    
+    // ✅ Aplicar formatação de moeda brasileira nas colunas 6 e 7 (índices 5 e 6)
+    // Formato: R$ #.##0,00
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    for (let R = range.s.r + 1; R <= range.e.r; R++) {
+      for (let C = 5; C <= 6; C++) {
+        const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+        if (ws[cellAddress]) {
+          ws[cellAddress].z = 'R$ #.##0,00'; // ✅ Formato monetário brasileiro
+          ws[cellAddress].t = 'n'; // ✅ Tipo numérico
+        }
+      }
+    }
+    
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Contas Pagas');
-    XLSX.writeFile(wb, `contas-pagas-${obraNome.replace(/\s+/g, '-')}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, 'Contas a Pagar');
+    XLSX.writeFile(wb, `contas-a-pagar-${obraNome.replace(/\s+/g, '-')}.xlsx`);
+  };
+
+  // ✅ Limpar filtros
+  const limparFiltros = () => {
+    setDataInicio('');
+    setDataFim('');
   };
 
   if (loading) return <div className="p-6">Carregando...</div>;
@@ -165,6 +225,39 @@ const notasAPagar = todasNotasRes.data.filter(n => statusPermitidos.includes(n.s
 
       <p className="mb-4"><strong>Obra:</strong> {obraNome}</p>
 
+      {/* ✅ FILTRO DE PERÍODO */}
+      <div className="bg-white p-4 rounded-lg shadow mb-6">
+        <div className="flex flex-wrap items-end gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Data Inicial</label>
+            <input
+              type="date"
+              value={dataInicio}
+              onChange={(e) => setDataInicio(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Data Final</label>
+            <input
+              type="date"
+              value={dataFim}
+              onChange={(e) => setDataFim(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <button
+            onClick={limparFiltros}
+            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+          >
+            Limpar Filtro
+          </button>
+          <span className="text-sm text-gray-500">
+            {notasFiltradas.length} de {notas.length} contas
+          </span>
+        </div>
+      </div>
+
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
@@ -179,18 +272,20 @@ const notasAPagar = todasNotasRes.data.filter(n => statusPermitidos.includes(n.s
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {notas.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-4 text-center text-gray-500">Nenhuma conta paga encontrada.</td></tr>
+            {notasFiltradas.length === 0 ? (
+              <tr><td colSpan={7} className="px-4 py-4 text-center text-gray-500">Nenhuma conta a pagar encontrada no período selecionado.</td></tr>
             ) : (
-              notas.map(n => (
+              notasFiltradas.map(n => (
                 <tr key={n.id}>
                   <td className="px-4 py-2">{n.numero_nota || '—'}</td>
                   <td className="px-4 py-2">{n.fornecedores?.nome_fantasia || '—'}</td>
-                  <td className="px-4 py-2 text-center">{n.data_emissao || '—'}</td>
-                  <td className="px-4 py-2 text-center">{n.data_vencimento || '—'}</td>
-                  <td className="px-4 py-2 text-center">{n.data_pagamento || '—'}</td>
-                  <td className="px-4 py-2 text-right">{formatarMoeda(n.valor_total)}</td>
-                  <td className="px-4 py-2 text-right font-bold text-blue-700">{formatarMoeda(n.valor_pago)}</td>
+                  {/* ✅ Datas formatadas como DD/MM/AAAA */}
+                  <td className="px-4 py-2 text-center">{formatarDataBR(n.data_emissao)}</td>
+                  <td className="px-4 py-2 text-center">{formatarDataBR(n.data_vencimento)}</td>
+                  <td className="px-4 py-2 text-center">{formatarDataBR(n.data_pagamento)}</td>
+                  {/* ✅ Valores formatados como moeda */}
+                  <td className="px-4 py-2 text-right">{formatarMoedaBR(n.valor_total)}</td>
+                  <td className="px-4 py-2 text-right font-bold text-blue-700">{formatarMoedaBR(n.valor_pago)}</td>
                 </tr>
               ))
             )}
