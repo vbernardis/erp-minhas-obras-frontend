@@ -32,6 +32,7 @@ interface Obra {
   nome: string;
 }
 
+// ✅ Interface atualizada com novos campos financeiros
 interface NotaFiscal {
   id: number;
   numero_nota: string;
@@ -46,12 +47,20 @@ interface NotaFiscal {
   usuario_lancamento?: string;
   obras: { nome: string };
   fornecedores: { nome_fantasia: string };
+  // ✅ Novos campos para PDF
+  desconto?: number | null;
+  juros?: number | null;
+  impostos_retidos?: number | null;
 }
 
 export default function Financeiro() {
   const [obras, setObras] = useState<Obra[]>([]);
   const [notas, setNotas] = useState<NotaFiscal[]>([]);
   const [obraFiltro, setObraFiltro] = useState<number | ''>('');
+  
+  // ✅ NOVO: Filtro por status
+  const [statusFiltro, setStatusFiltro] = useState<string>('');
+  
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -90,10 +99,14 @@ export default function Financeiro() {
     }
   };
 
-  const notasFiltradas = obraFiltro
-    ? notas.filter(nota => nota.obras?.nome && nota.obras.nome === obras.find(o => o.id === obraFiltro)?.nome)
-    : notas;
+  // ✅ Filtro combinado: obra + status
+  const notasFiltradas = notas.filter(nota => {
+    const filtroObra = !obraFiltro || (nota.obras?.nome && nota.obras.nome === obras.find(o => o.id === obraFiltro)?.nome);
+    const filtroStatus = !statusFiltro || nota.status === statusFiltro;
+    return filtroObra && filtroStatus;
+  });
 
+  // ✅ PDF Export atualizado com novas colunas
   const exportarPDFLista = () => {
     if (notasFiltradas.length === 0) {
       alert('Nenhuma nota para exportar.');
@@ -118,6 +131,7 @@ export default function Financeiro() {
     doc.setFont('helvetica', 'normal');
     doc.text(`Obra: ${obraNome}`, 20, 35);
 
+    // ✅ Dados da tabela com novas colunas: Desconto, Juros, Impostos Retidos
     const tableData = notasFiltradas.map(nota => [
       nota.numero_nota,
       nota.obras?.nome || '—',
@@ -127,31 +141,38 @@ export default function Financeiro() {
       formatarDataBR(nota.data_vencimento),
       `R$ ${formatarMoeda(nota.valor_total)}`,
       `R$ ${formatarMoeda(nota.valor_pago || 0)}`,
+      `R$ ${formatarMoeda(nota.desconto || 0)}`,
+      `R$ ${formatarMoeda(nota.juros || 0)}`,
+      `R$ ${formatarMoeda(nota.impostos_retidos || 0)}`,
       nota.status,
       nota.usuario_lancamento || 'Não informado'
     ]);
 
-    const colWidths = [22, 30, 35, 22, 22, 22, 28, 28, 22, 32];
+    // ✅ Larguras ajustadas para 13 colunas (antes eram 10)
+    const colWidths = [20, 25, 30, 18, 18, 18, 22, 22, 18, 18, 20, 18, 25];
 
     // @ts-ignore
     (doc as any).autoTable({
       startY: 42,
-      head: [['NF', 'Obra', 'Fornecedor', 'Lançamento', 'Emissão', 'Vencimento', 'Valor Total', 'Valor Pago', 'Status', 'Usuário']],
+      // ✅ Cabeçalho com novas colunas
+      head: [['NF', 'Obra', 'Fornecedor', 'Lançamento', 'Emissão', 'Vencimento', 'Vlr. Total', 'Vlr. Pago', 'Desconto', 'Juros', 'Imp. Retidos', 'Status', 'Usuário']],
       body: tableData,
       theme: 'grid',
       headStyles: { 
         fillColor: [43, 108, 176], 
         textColor: [255, 255, 255],
-        fontSize: 9 
+        fontSize: 8 
       },
       bodyStyles: { 
-        fontSize: 8,
-        cellPadding: 1.5
+        fontSize: 7,
+        cellPadding: 1
       },
       columnStyles: colWidths.reduce((acc, width, index) => {
         acc[index] = { cellWidth: width };
-        if ([6, 7].includes(index)) acc[index].halign = 'right';
-        if ([3, 4, 5].includes(index)) acc[index].halign = 'center';
+        // Alinhamento direito para valores monetários (colunas 6-10)
+        if ([6, 7, 8, 9, 10].includes(index)) acc[index].halign = 'right';
+        // Centralizar datas e status
+        if ([3, 4, 5, 11].includes(index)) acc[index].halign = 'center';
         return acc;
       }, {} as Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }>),
       styles: { 
@@ -233,19 +254,38 @@ export default function Financeiro() {
         </div>
       </div>
 
-      {/* Filtro por Obra */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Filtrar por Obra</label>
-        <select
-          value={obraFiltro}
-          onChange={e => setObraFiltro(Number(e.target.value) || '')}
-          className="w-full md:w-1/3 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Todas as obras</option>
-          {obras.map(obra => (
-            <option key={obra.id} value={obra.id}>{obra.nome}</option>
-          ))}
-        </select>
+      {/* Filtros: Obra + Status */}
+      <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Filtro por Obra */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Filtrar por Obra</label>
+          <select
+            value={obraFiltro}
+            onChange={e => setObraFiltro(Number(e.target.value) || '')}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Todas as obras</option>
+            {obras.map(obra => (
+              <option key={obra.id} value={obra.id}>{obra.nome}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* ✅ NOVO: Filtro por Status */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Filtrar por Status</label>
+          <select
+            value={statusFiltro}
+            onChange={e => setStatusFiltro(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Todos os status</option>
+            <option value="pendente">Pendente</option>
+            <option value="pago">Pago</option>
+            <option value="lançada">Lançada</option>
+            <option value="cancelada">Cancelada</option>
+          </select>
+        </div>
       </div>
 
       {loading ? (
@@ -273,7 +313,7 @@ export default function Financeiro() {
               {notasFiltradas.length === 0 ? (
                 <tr>
                   <td colSpan={11} className="px-4 py-3 text-center text-gray-500 text-sm">
-                    Nenhuma nota fiscal encontrada.
+                    Nenhuma nota fiscal encontrada com os filtros selecionados.
                   </td>
                 </tr>
               ) : (
