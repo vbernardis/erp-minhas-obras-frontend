@@ -107,88 +107,91 @@ export default function Financeiro() {
   });
 
   // ✅ PDF Export atualizado com novas colunas
-  const exportarPDFLista = () => {
-    if (notasFiltradas.length === 0) {
-      alert('Nenhuma nota para exportar.');
-      return;
+  // ✅ PDF Export ajustado: Imp. Retidos só aparece quando status = 'pago'
+const exportarPDFLista = () => {
+  if (notasFiltradas.length === 0) {
+    alert('Nenhuma nota para exportar.');
+    return;
+  }
+
+  const doc = new jsPDF('landscape', 'mm', 'a4');
+  const pageWidth = doc.internal.pageSize.width;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('ERP MINHAS OBRAS', pageWidth / 2, 15, { align: 'center' });
+
+  doc.setFontSize(12);
+  doc.text('LISTA DE NOTAS FISCAIS', pageWidth / 2, 25, { align: 'center' });
+
+  const obraNome = obraFiltro
+    ? (obras.find(o => o.id === obraFiltro)?.nome || 'Todas as obras')
+    : 'Todas as obras';
+  
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Obra: ${obraNome}`, 20, 35);
+
+  // ✅ Dados da tabela: Imp. Retidos só mostra valor se status === 'pago'
+  const tableData = notasFiltradas.map(nota => [
+    nota.numero_nota,
+    nota.obras?.nome || '—',
+    nota.fornecedores?.nome_fantasia || '—',
+    formatarDataBR(nota.data_lancamento),
+    formatarDataBR(nota.data_emissao),
+    formatarDataBR(nota.data_vencimento),
+    `R$ ${formatarMoeda(nota.valor_total)}`,
+    `R$ ${formatarMoeda(nota.valor_pago || 0)}`,
+    `R$ ${formatarMoeda(nota.desconto || 0)}`,
+    `R$ ${formatarMoeda(nota.juros || 0)}`,
+    // ✅ CONDIÇÃO: só exibe impostos_retidos se a nota estiver PAGA
+    nota.status === 'pago' 
+      ? `R$ ${formatarMoeda(nota.impostos_retidos || 0)}` 
+      : '—',
+    nota.status,
+    nota.usuario_lancamento || 'Não informado'
+  ]);
+
+  // ✅ Larguras ajustadas para 13 colunas
+  const colWidths = [20, 25, 30, 18, 18, 18, 22, 22, 18, 18, 20, 18, 25];
+
+  // @ts-ignore
+  (doc as any).autoTable({
+    startY: 42,
+    head: [['NF', 'Obra', 'Fornecedor', 'Lançamento', 'Emissão', 'Vencimento', 'Vlr. Total', 'Vlr. Pago', 'Desconto', 'Juros', 'Imp. Retidos', 'Status', 'Usuário']],
+    body: tableData,
+    theme: 'grid',
+    headStyles: { 
+      fillColor: [43, 108, 176], 
+      textColor: [255, 255, 255],
+      fontSize: 8 
+    },
+    bodyStyles: { 
+      fontSize: 7,
+      cellPadding: 1
+    },
+    columnStyles: colWidths.reduce((acc, width, index) => {
+      acc[index] = { cellWidth: width };
+      // Alinhamento direito para valores monetários (colunas 6-10)
+      if ([6, 7, 8, 9, 10].includes(index)) acc[index].halign = 'right';
+      // Centralizar datas e status
+      if ([3, 4, 5, 11].includes(index)) acc[index].halign = 'center';
+      return acc;
+    }, {} as Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }>),
+    styles: { 
+      overflow: 'linebreak', 
+      cellWidth: 'wrap',
+      font: 'helvetica'
     }
+  });
 
-    const doc = new jsPDF('landscape', 'mm', 'a4');
-    const pageWidth = doc.internal.pageSize.width;
+  // @ts-ignore
+  const finalY = (doc as any).lastAutoTable?.finalY || 280;
+  doc.setFontSize(9);
+  doc.text(`Relatório gerado em: ${new Date().toLocaleDateString('pt-BR')}`, pageWidth / 2, finalY + 10, { align: 'center' });
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
-    doc.text('ERP MINHAS OBRAS', pageWidth / 2, 15, { align: 'center' });
-
-    doc.setFontSize(12);
-    doc.text('LISTA DE NOTAS FISCAIS', pageWidth / 2, 25, { align: 'center' });
-
-    const obraNome = obraFiltro
-      ? (obras.find(o => o.id === obraFiltro)?.nome || 'Todas as obras')
-      : 'Todas as obras';
-    
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Obra: ${obraNome}`, 20, 35);
-
-    // ✅ Dados da tabela com novas colunas: Desconto, Juros, Impostos Retidos
-    const tableData = notasFiltradas.map(nota => [
-      nota.numero_nota,
-      nota.obras?.nome || '—',
-      nota.fornecedores?.nome_fantasia || '—',
-      formatarDataBR(nota.data_lancamento),
-      formatarDataBR(nota.data_emissao),
-      formatarDataBR(nota.data_vencimento),
-      `R$ ${formatarMoeda(nota.valor_total)}`,
-      `R$ ${formatarMoeda(nota.valor_pago || 0)}`,
-      `R$ ${formatarMoeda(nota.desconto || 0)}`,
-      `R$ ${formatarMoeda(nota.juros || 0)}`,
-      `R$ ${formatarMoeda(nota.impostos_retidos || 0)}`,
-      nota.status,
-      nota.usuario_lancamento || 'Não informado'
-    ]);
-
-    // ✅ Larguras ajustadas para 13 colunas (antes eram 10)
-    const colWidths = [20, 25, 30, 18, 18, 18, 22, 22, 18, 18, 20, 18, 25];
-
-    // @ts-ignore
-    (doc as any).autoTable({
-      startY: 42,
-      // ✅ Cabeçalho com novas colunas
-      head: [['NF', 'Obra', 'Fornecedor', 'Lançamento', 'Emissão', 'Vencimento', 'Vlr. Total', 'Vlr. Pago', 'Desconto', 'Juros', 'Imp. Retidos', 'Status', 'Usuário']],
-      body: tableData,
-      theme: 'grid',
-      headStyles: { 
-        fillColor: [43, 108, 176], 
-        textColor: [255, 255, 255],
-        fontSize: 8 
-      },
-      bodyStyles: { 
-        fontSize: 7,
-        cellPadding: 1
-      },
-      columnStyles: colWidths.reduce((acc, width, index) => {
-        acc[index] = { cellWidth: width };
-        // Alinhamento direito para valores monetários (colunas 6-10)
-        if ([6, 7, 8, 9, 10].includes(index)) acc[index].halign = 'right';
-        // Centralizar datas e status
-        if ([3, 4, 5, 11].includes(index)) acc[index].halign = 'center';
-        return acc;
-      }, {} as Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }>),
-      styles: { 
-        overflow: 'linebreak', 
-        cellWidth: 'wrap',
-        font: 'helvetica'
-      }
-    });
-
-    // @ts-ignore
-    const finalY = (doc as any).lastAutoTable?.finalY || 280;
-    doc.setFontSize(9);
-    doc.text(`Relatório gerado em: ${new Date().toLocaleDateString('pt-BR')}`, pageWidth / 2, finalY + 10, { align: 'center' });
-
-    doc.save(`lista-notas-fiscais-${obraNome.replace(/\s+/g, '-')}.pdf`);
-  };
+  doc.save(`lista-notas-fiscais-${obraNome.replace(/\s+/g, '-')}.pdf`);
+};
 
   const handleDelete = async (id: number) => {
     const nota = notas.find(n => n.id === id);
