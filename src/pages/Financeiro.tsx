@@ -43,7 +43,7 @@ interface NotaFiscal {
   valor_pago: number;
   status: string;
   usuario_baixa?: string;
-  usuario_lancamento?: string; // ✅ Adicionado
+  usuario_lancamento?: string;
   obras: { nome: string };
   fornecedores: { nome_fantasia: string };
 }
@@ -67,6 +67,7 @@ export default function Financeiro() {
   const carregarDados = async () => {
     try {
       const [obrasRes, notasRes] = await Promise.all([
+        // ✅ URLs corrigidas (sem espaços no final)
         axios.get<Obra[]>('https://erp-minhas-obras-backend.onrender.com/obras'),
         axios.get<NotaFiscal[]>('https://erp-minhas-obras-backend.onrender.com/notas-fiscais')
       ]);
@@ -81,6 +82,7 @@ export default function Financeiro() {
 
   const carregarNotas = async () => {
     try {
+      // ✅ URL corrigida
       const res = await axios.get('https://erp-minhas-obras-backend.onrender.com/notas-fiscais');
       setNotas(res.data);
     } catch (err) {
@@ -92,85 +94,80 @@ export default function Financeiro() {
     ? notas.filter(nota => nota.obras?.nome && nota.obras.nome === obras.find(o => o.id === obraFiltro)?.nome)
     : notas;
 
-  // ✅ Função para exportar PDF da lista de notas (frontend)
-const exportarPDFLista = () => {
-  if (notasFiltradas.length === 0) {
-    alert('Nenhuma nota para exportar.');
-    return;
-  }
-
-  const doc = new jsPDF('landscape', 'mm', 'a4');
-  const pageWidth = doc.internal.pageSize.width;
-
-  // Cabeçalho
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text('ERP MINHAS OBRAS', pageWidth / 2, 15, { align: 'center' });
-
-  doc.setFontSize(12);
-  doc.text('LISTA DE NOTAS FISCAIS', pageWidth / 2, 25, { align: 'center' });
-
-  const obraNome = obraFiltro
-    ? (obras.find(o => o.id === obraFiltro)?.nome || 'Todas as obras')
-    : 'Todas as obras';
-  
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`Obra: ${obraNome}`, 20, 35);
-
-  // Dados
-  const tableData = notasFiltradas.map(nota => [
-    nota.numero_nota,
-    nota.obras?.nome || '—',
-    nota.fornecedores?.nome_fantasia || '—',
-    formatarDataBR(nota.data_lancamento),
-    formatarDataBR(nota.data_emissao),
-    formatarDataBR(nota.data_vencimento),
-    `R$ ${formatarMoeda(nota.valor_total)}`,
-    `R$ ${formatarMoeda(nota.valor_pago || 0)}`,
-    nota.status,
-    nota.usuario_lancamento || 'Não informado'
-  ]);
-
-  // Larguras das colunas (total ~277mm)
-  const colWidths = [22, 30, 35, 22, 22, 22, 28, 28, 22, 32];
-
-  // @ts-ignore
-  (doc as any).autoTable({
-    startY: 42,
-    head: [['NF', 'Obra', 'Fornecedor', 'Lançamento', 'Emissão', 'Vencimento', 'Valor Total', 'Valor Pago', 'Status', 'Usuário']],
-    body: tableData,
-    theme: 'grid',
-    headStyles: { 
-      fillColor: [43, 108, 176], 
-      textColor: [255, 255, 255],
-      fontSize: 9 
-    },
-    bodyStyles: { 
-      fontSize: 8,
-      cellPadding: 1.5
-    },
-columnStyles: colWidths.reduce((acc, width, index) => {
-  acc[index] = { cellWidth: width };
-  if ([6, 7].includes(index)) acc[index].halign = 'right';
-  if ([3, 4, 5].includes(index)) acc[index].halign = 'center';
-  return acc;
-}, {} as Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }>),
-    styles: { 
-      overflow: 'linebreak', 
-      cellWidth: 'wrap',
-      font: 'helvetica'
+  const exportarPDFLista = () => {
+    if (notasFiltradas.length === 0) {
+      alert('Nenhuma nota para exportar.');
+      return;
     }
-  });
 
-  // Rodapé
-  // @ts-ignore
-  const finalY = (doc as any).lastAutoTable?.finalY || 280;
-  doc.setFontSize(9);
-  doc.text(`Relatório gerado em: ${new Date().toLocaleDateString('pt-BR')}`, pageWidth / 2, finalY + 10, { align: 'center' });
+    const doc = new jsPDF('landscape', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.width;
 
-  doc.save(`lista-notas-fiscais-${obraNome.replace(/\s+/g, '-')}.pdf`);
-};
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.text('ERP MINHAS OBRAS', pageWidth / 2, 15, { align: 'center' });
+
+    doc.setFontSize(12);
+    doc.text('LISTA DE NOTAS FISCAIS', pageWidth / 2, 25, { align: 'center' });
+
+    const obraNome = obraFiltro
+      ? (obras.find(o => o.id === obraFiltro)?.nome || 'Todas as obras')
+      : 'Todas as obras';
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Obra: ${obraNome}`, 20, 35);
+
+    const tableData = notasFiltradas.map(nota => [
+      nota.numero_nota,
+      nota.obras?.nome || '—',
+      nota.fornecedores?.nome_fantasia || '—',
+      formatarDataBR(nota.data_lancamento),
+      formatarDataBR(nota.data_emissao),
+      formatarDataBR(nota.data_vencimento),
+      `R$ ${formatarMoeda(nota.valor_total)}`,
+      `R$ ${formatarMoeda(nota.valor_pago || 0)}`,
+      nota.status,
+      nota.usuario_lancamento || 'Não informado'
+    ]);
+
+    const colWidths = [22, 30, 35, 22, 22, 22, 28, 28, 22, 32];
+
+    // @ts-ignore
+    (doc as any).autoTable({
+      startY: 42,
+      head: [['NF', 'Obra', 'Fornecedor', 'Lançamento', 'Emissão', 'Vencimento', 'Valor Total', 'Valor Pago', 'Status', 'Usuário']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { 
+        fillColor: [43, 108, 176], 
+        textColor: [255, 255, 255],
+        fontSize: 9 
+      },
+      bodyStyles: { 
+        fontSize: 8,
+        cellPadding: 1.5
+      },
+      columnStyles: colWidths.reduce((acc, width, index) => {
+        acc[index] = { cellWidth: width };
+        if ([6, 7].includes(index)) acc[index].halign = 'right';
+        if ([3, 4, 5].includes(index)) acc[index].halign = 'center';
+        return acc;
+      }, {} as Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }>),
+      styles: { 
+        overflow: 'linebreak', 
+        cellWidth: 'wrap',
+        font: 'helvetica'
+      }
+    });
+
+    // @ts-ignore
+    const finalY = (doc as any).lastAutoTable?.finalY || 280;
+    doc.setFontSize(9);
+    doc.text(`Relatório gerado em: ${new Date().toLocaleDateString('pt-BR')}`, pageWidth / 2, finalY + 10, { align: 'center' });
+
+    doc.save(`lista-notas-fiscais-${obraNome.replace(/\s+/g, '-')}.pdf`);
+  };
 
   const handleDelete = async (id: number) => {
     const nota = notas.find(n => n.id === id);
@@ -182,6 +179,7 @@ columnStyles: colWidths.reduce((acc, width, index) => {
     if (!window.confirm('Tem certeza que deseja excluir esta nota fiscal?')) return;
 
     try {
+      // ✅ URL corrigida
       await axios.delete(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/${id}`);
       alert('Nota excluída com sucesso!');
       carregarNotas();
@@ -225,14 +223,14 @@ columnStyles: colWidths.reduce((acc, width, index) => {
           <button
             onClick={() => {
               const params = obraFiltro ? `?obra_id=${obraFiltro}` : '';
+              // ✅ URL corrigida
               window.open(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/excel${params}`, '_blank');
             }}
             className="flex items-center px-3 py-2 bg-yellow-600 text-white text-sm rounded-lg hover:bg-yellow-700"
           >
             <FiFileText className="mr-1" /> Exportar Excel
           </button>
-
-          </div>
+        </div>
       </div>
 
       {/* Filtro por Obra */}
@@ -253,7 +251,8 @@ columnStyles: colWidths.reduce((acc, width, index) => {
       {loading ? (
         <p className="text-gray-500">Carregando...</p>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
+        // ✅ CORREÇÃO PRINCIPAL: overflow-x-auto para habilitar rolagem lateral
+        <div className="bg-white rounded-lg shadow overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -266,7 +265,7 @@ columnStyles: colWidths.reduce((acc, width, index) => {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valor Total</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valor Pago</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuário</th> {/* ✅ Nova coluna */}
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuário</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
               </tr>
             </thead>
