@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { hasPermission } from '../utils/permissions';
 import { FiRefreshCw, FiEdit2, FiTrash, FiSearch, FiPlus } from 'react-icons/fi';
+import API_BASE from '../api/config';
 
 interface Usuario {
   id: number;
@@ -13,7 +14,6 @@ interface Usuario {
   created_at: string;
 }
 
-// Interface para Obra
 interface Obra {
   id: number;
   nome: string;
@@ -34,27 +34,28 @@ export default function Usuarios() {
   const [permissions, setPermissions] = useState<string[]>([]);
   const navigate = useNavigate();
 
-  // Novos states para o novo sistema de permissões
   const [obras, setObras] = useState<Obra[]>([]);
   const [obrasAutorizadas, setObrasAutorizadas] = useState<string[]>([]);
 
-  // Função para carregar a lista de obras
+  // ✅ Função para carregar obras (URL corrigida)
   const carregarObras = async () => {
     try {
-      const resposta = await axios.get<Obra[]>('https://erp-minhas-obras-backend.onrender.com/obras');
+      const resposta = await axios.get<Obra[]>(`${API_BASE}/obras`);
       setObras(resposta.data);
-    } catch (erro) {
+    } catch (erro: any) {
       console.error('Erro ao carregar obras:', erro);
     }
   };
 
+  // ✅ Função para carregar usuários (URL + erro corrigidos)
   const carregarUsuarios = async () => {
     setLoading(true);
     try {
-      const resposta = await axios.get<Usuario[]>('https://erp-minhas-obras-backend.onrender.com/users');
+      const resposta = await axios.get<Usuario[]>(`${API_BASE}/users`);
       setUsuarios(resposta.data);
-    } catch (erro) {
-      alert('Erro ao carregar usuários: ' + erro);
+    } catch (erro: any) {
+      const msg = erro.response?.data?.error || erro.message || 'Erro desconhecido';
+      alert('Erro ao carregar usuários: ' + msg);
     } finally {
       setLoading(false);
     }
@@ -62,21 +63,17 @@ export default function Usuarios() {
 
   const handleCreate = () => {
     setCurrentUsuario(null);
-    setFormData({
-      name: '',
-      email: '',
-      role: 'user',
-      password: ''
-    });
+    setFormData({ name: '', email: '', role: 'user', password: '' });
     setPermissions([]);
     setObrasAutorizadas([]);
     carregarObras();
     setShowModal(true);
   };
 
+  // ✅ Função handleEdit com URLs corrigidas
   const handleEdit = async (usuario: Usuario) => {
     try {
-      const resposta = await axios.get(`https://erp-minhas-obras-backend.onrender.com/users/${usuario.id}`);
+      const resposta = await axios.get(`${API_BASE}/users/${usuario.id}`);
       const dados = resposta.data;
 
       setCurrentUsuario(dados);
@@ -87,13 +84,11 @@ export default function Usuarios() {
         password: ''
       });
 
-      // Carregar permissões
-      const permRes = await axios.get(`https://erp-minhas-obras-backend.onrender.com/users/${usuario.id}/permissoes`);
+      const permRes = await axios.get(`${API_BASE}/users/${usuario.id}/permissoes`);
       const permIds = permRes.data.map((p: any) => p.tela);
       setPermissions(permIds);
 
-      // Carregar obras autorizadas → CONVERTER PARA STRING
-      const obraRes = await axios.get(`https://erp-minhas-obras-backend.onrender.com/users/${usuario.id}/obras`);
+      const obraRes = await axios.get(`${API_BASE}/users/${usuario.id}/obras`);
       const obraIds = obraRes.data.map((o: any) => o.obra_id.toString());
       setObrasAutorizadas(obraIds);
 
@@ -105,106 +100,80 @@ export default function Usuarios() {
     }
   };
 
+  // ✅ Função handleDelete com URL corrigida
   const handleDelete = async (id: number) => {
     if (!window.confirm('Tem certeza que deseja deletar este usuário?')) return;
-
     try {
-      await axios.delete(`https://erp-minhas-obras-backend.onrender.com/users/${id}`);
+      await axios.delete(`${API_BASE}/users/${id}`);
       alert('Usuário deletado com sucesso!');
       carregarUsuarios();
-    } catch (erro) {
-      alert('Erro ao deletar usuário: ' + erro);
+    } catch (erro: any) {
+      const msg = erro.response?.data?.error || erro.message || 'Erro desconhecido';
+      alert('Erro ao deletar usuário: ' + msg);
     }
   };
 
+  // ✅ Função handleSubmit com URLs corrigidas
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  try {
-    if (currentUsuario) {
-      // ... atualização existente ...
-      const novoUsuarioId = currentUsuario.id; // ← Adicione esta linha
+    e.preventDefault();
+    try {
+      if (currentUsuario) {
+        // Atualizar usuário existente
+        await axios.put(`${API_BASE}/users/${currentUsuario.id}`, {
+          name: formData.name,
+          email: formData.email,
+          role: formData.role,
+          password: formData.password || undefined,
+          permissions: permissions
+        });
 
-      // ✅ RECUPERAR USUÁRIO ATUALIZADO (com permissões corretas)
-      const usuarioAtualizado = await axios.get<Usuario>(
-        `https://erp-minhas-obras-backend.onrender.com/users/${novoUsuarioId}`
-      );
-
-      // Atualizar localStorage se for o próprio usuário
-      const userStr = localStorage.getItem('user');
-      if (userStr) {
-        try {
-          const currentUser = JSON.parse(userStr);
-          if (currentUser.id === novoUsuarioId) {
-            localStorage.setItem('user', JSON.stringify(usuarioAtualizado.data));
-          }
-        } catch (e) {
-          console.warn('Erro ao atualizar user no localStorage');
+        if (permissions.length > 0) {
+          await axios.post(`${API_BASE}/users/${currentUsuario.id}/permissoes`, {
+            permissoes: permissions
+          });
         }
-      }
 
-      alert('Usuário atualizado com sucesso!');
-    } else {
-      // Criar novo usuário
-      const resposta = await axios.post(
-        'https://erp-minhas-obras-backend.onrender.com/users',
-        {
+        const obrasIds = obrasAutorizadas.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+        if (obrasIds.length > 0) {
+          await axios.post(`${API_BASE}/users/${currentUsuario.id}/obras`, { obras: obrasIds });
+        }
+
+        alert('Usuário atualizado com sucesso!');
+      } else {
+        // Criar novo usuário
+        const resposta = await axios.post(`${API_BASE}/users`, {
           name: formData.name,
           email: formData.email,
           password: formData.password,
-          role: formData.role,
+          role: formData.role
+        });
+        const novoUsuarioId = resposta.data.id;
+
+        if (permissions.length > 0) {
+          await axios.post(`${API_BASE}/users/${novoUsuarioId}/permissoes`, {
+            permissoes: permissions
+          });
         }
-      );
-      const novoUsuarioId = resposta.data.id; // ← Este é o original
 
-      if (permissions.length > 0) {
-        await axios.post(
-          `https://erp-minhas-obras-backend.onrender.com/users/${novoUsuarioId}/permissoes`,
-          { permissoes: permissions }
-        );
-      }
-
-      const obrasIds = obrasAutorizadas.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
-      if (obrasIds.length > 0) {
-        await axios.post(
-          `https://erp-minhas-obras-backend.onrender.com/users/${novoUsuarioId}/obras`,
-          { obras: obrasIds }
-        );
-      }
-
-      // ✅ RECUPERAR USUÁRIO CRIADO (com permissões corretas)
-      const usuarioCompleto = await axios.get<Usuario>(
-        `https://erp-minhas-obras-backend.onrender.com/users/${novoUsuarioId}`
-      );
-
-      // Atualizar localStorage se for o próprio usuário
-      const userStr = localStorage.getItem('user');
-      if (userStr) {
-        try {
-          const currentUser = JSON.parse(userStr);
-          if (currentUser.id === novoUsuarioId) {
-            localStorage.setItem('user', JSON.stringify(usuarioCompleto.data));
-          }
-        } catch (e) {
-          console.warn('Erro ao atualizar user no localStorage');
+        const obrasIds = obrasAutorizadas.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+        if (obrasIds.length > 0) {
+          await axios.post(`${API_BASE}/users/${novoUsuarioId}/obras`, { obras: obrasIds });
         }
+
+        alert('Usuário criado com sucesso!');
       }
 
-      alert('Usuário criado com sucesso!');
+      setShowModal(false);
+      carregarUsuarios();
+    } catch (erro: any) {
+      console.error('Erro ao salvar usuário:', erro);
+      const msg = erro.response?.data?.error || erro.message || 'Erro desconhecido';
+      alert('Erro ao salvar usuário: ' + msg);
     }
-
-    setShowModal(false);
-    carregarUsuarios();
-  } catch (erro) {
-    console.error('Erro ao salvar usuário:', erro);
-    alert('Erro ao salvar usuário: ' + (erro instanceof Error ? erro.message : 'Erro desconhecido'));
-  }
-};
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   useEffect(() => {
@@ -233,17 +202,10 @@ export default function Usuarios() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Gerenciamento de Usuários</h1>
         <div className="flex flex-wrap gap-3">
-          <button
-            onClick={handleCreate}
-            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
-          >
+          <button onClick={handleCreate} className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
             <FiPlus className="mr-2" /> Novo Usuário
           </button>
-          <button
-            onClick={carregarUsuarios}
-            disabled={loading}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
-          >
+          <button onClick={carregarUsuarios} disabled={loading} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50">
             <FiRefreshCw className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
             {loading ? 'Carregando...' : 'Atualizar'}
           </button>
@@ -254,13 +216,7 @@ export default function Usuarios() {
       <div className="bg-white p-4 rounded-lg shadow mb-6">
         <div className="relative">
           <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por nome ou e-mail..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar por nome ou e-mail..." className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
       </div>
 
@@ -276,41 +232,27 @@ export default function Usuarios() {
               <div className="flex justify-between items-start mb-4">
                 <h3 className="text-lg font-semibold text-gray-900">{usuario.name}</h3>
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => handleEdit(usuario)}
-                    className="p-2 text-blue-600 hover:text-blue-800 rounded-lg hover:bg-blue-50 transition"
-                    title="Editar Permissões"
-                  >
+                  <button onClick={() => handleEdit(usuario)} className="p-2 text-blue-600 hover:text-blue-800 rounded-lg hover:bg-blue-50 transition" title="Editar Permissões">
                     <FiEdit2 className="w-4 h-4" />
                   </button>
                   {usuario.role !== 'master' && (
-                    <button
-                      onClick={() => handleDelete(usuario.id)}
-                      className="p-2 text-red-600 hover:text-red-800 rounded-lg hover:bg-red-50 transition"
-                      title="Deletar"
-                    >
+                    <button onClick={() => handleDelete(usuario.id)} className="p-2 text-red-600 hover:text-red-800 rounded-lg hover:bg-red-50 transition" title="Deletar">
                       <FiTrash className="w-4 h-4" />
                     </button>
                   )}
                 </div>
               </div>
               <p className="text-gray-600 text-sm mb-2">📧 {usuario.email}</p>
-              <p className="text-sm mb-3">
-                <span className="font-medium">Cargo:</span> {usuario.role}
-              </p>
+              <p className="text-sm mb-3"><span className="font-medium">Cargo:</span> {usuario.role}</p>
               <div className="mb-3">
                 <p className="text-xs font-medium text-gray-700 mb-1">Permissões:</p>
                 <div className="flex flex-wrap gap-1">
                   {usuario.permissions.map((perm) => (
-                    <span key={perm} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
-                      {perm}
-                    </span>
+                    <span key={perm} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">{perm}</span>
                   ))}
                 </div>
               </div>
-              <p className="text-xs text-gray-500">
-                Criado em: {new Date(usuario.created_at).toLocaleDateString('pt-BR')}
-              </p>
+              <p className="text-xs text-gray-500">Criado em: {new Date(usuario.created_at).toLocaleDateString('pt-BR')}</p>
             </div>
           ))}
         </div>
@@ -321,43 +263,20 @@ export default function Usuarios() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-screen overflow-y-auto">
             <div className="p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-6">
-                {currentUsuario ? 'Editar Usuário' : 'Cadastrar Novo Usuário'}
-              </h2>
+              <h2 className="text-xl font-bold text-gray-900 mb-6">{currentUsuario ? 'Editar Usuário' : 'Cadastrar Novo Usuário'}</h2>
               <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Campos de identificação */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo *</label>
-                    <input
-                      type="text"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    />
+                    <input type="text" name="name" value={formData.name} onChange={handleInputChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">E-mail *</label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    />
+                    <input type="email" name="email" value={formData.email} onChange={handleInputChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Cargo *</label>
-                    <select
-                      name="role"
-                      value={formData.role}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    >
+                    <select name="role" value={formData.role} onChange={handleInputChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
                       <option value="user">Usuário</option>
                       <option value="admin">Administrador</option>
                       <option value="engenheiro">Engenheiro</option>
@@ -369,116 +288,67 @@ export default function Usuarios() {
                   {!currentUsuario && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Senha Inicial *</label>
-                      <input
-                        type="password"
-                        name="password"
-                        value={formData.password}
-                        onChange={handleInputChange}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        required
-                        minLength={6}
-                      />
+                      <input type="password" name="password" value={formData.password} onChange={handleInputChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required minLength={6} />
                     </div>
                   )}
                 </div>
 
-                {/* Novo campo: Permissões por tela */}
-<div>
-  <label className="block text-sm font-medium text-gray-700 mb-1">
-    🔐 Permissões por Tela (selecione as telas que o usuário pode acessar)
-  </label>
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
-    {[
-      // Obras
-      { id: 'obras.listar', label: 'Visualizar Obras' },
-      { id: 'obras.editar', label: 'Criar/Editar Obras' },
-      
-      // Orçamentos
-      { id: 'orcamentos.listar', label: 'Visualizar Orçamentos' },
-      { id: 'orcamentos.editar', label: 'Criar/Editar Orçamentos' },
-      { id: 'orcamentos.copiar', label: 'Copiar Orçamentos' },
-      
-      // Diário de Obra
-      { id: 'diario.listar', label: 'Visualizar Diário de Obra' },
-      { id: 'diario.editar', label: 'Criar/Editar Diário de Obra' },
-      { id: 'diario.exportar', label: 'Exportar Diário (PDF)' },
-      
-      // Financeiro - Notas Fiscais
-      { id: 'financeiro.notas.lancar', label: 'Lançar Notas Fiscais' },
-      { id: 'financeiro.notas.baixar', label: 'Registrar Pagamento' },
-      { id: 'financeiro.notas.editar', label: 'Editar Notas Fiscais' },
-      { id: 'financeiro.notas.excluir', label: 'Excluir Notas Fiscais' },
-      
-      // Financeiro - Contas
-      { id: 'financeiro.contas-pagar', label: 'Visualizar Contas a Pagar' },
-      { id: 'financeiro.contas-pagas', label: 'Visualizar Contas Pagas' },
-      { id: 'financeiro.exportar-excel', label: 'Exportar Financeiro (Excel)' },
-      { id: 'financeiro.exportar-pdf', label: 'Exportar Financeiro (PDF)' },
-      
-      // Suprimentos
-      { id: 'suprimentos.fornecedores', label: 'Gerenciar Fornecedores' },
-      { id: 'suprimentos.pedidos', label: 'Gerenciar Pedidos de Compra' },
-      
-      // Relatórios
-      { id: 'relatorios.acessar', label: 'Acessar Relatórios' },
-      { id: 'relatorios.mapa-chuvas', label: 'Gerar Mapa de Chuvas' },
-      
-      // Usuários (só para admins)
-      { id: 'usuarios.gerenciar', label: 'Gerenciar Usuários' }
-    ].map(perm => (
-      <label key={perm.id} className="flex items-center">
-        <input
-          type="checkbox"
-          checked={permissions.includes(perm.id)}
-          onChange={(e) => {
-            if (e.target.checked) {
-              setPermissions(prev => [...prev, perm.id]);
-            } else {
-              setPermissions(prev => prev.filter(p => p !== perm.id));
-            }
-          }}
-          className="mr-2"
-        />
-        {perm.label}
-      </label>
-    ))}
-  </div>
-</div>
-
-                {/* Novo campo: Obras autorizadas */}
+                {/* Permissões por tela */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    🏗️ Obras Autorizadas (selecione as obras que o usuário pode acessar)
-                  </label>
-                  <select
-                    multiple
-                    value={obrasAutorizadas}
-                    onChange={(e) => {
-                      const selected = Array.from(e.target.selectedOptions, option => option.value);
-                      setObrasAutorizadas(selected);
-                    }}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 h-32"
-                  >
+                  <label className="block text-sm font-medium text-gray-700 mb-1">🔐 Permissões por Tela</label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                    {[
+                      { id: 'obras.listar', label: 'Visualizar Obras' },
+                      { id: 'obras.editar', label: 'Criar/Editar Obras' },
+                      { id: 'orcamentos.listar', label: 'Visualizar Orçamentos' },
+                      { id: 'orcamentos.editar', label: 'Criar/Editar Orçamentos' },
+                      { id: 'orcamentos.copiar', label: 'Copiar Orçamentos' },
+                      { id: 'diario.listar', label: 'Visualizar Diário de Obra' },
+                      { id: 'diario.editar', label: 'Criar/Editar Diário de Obra' },
+                      { id: 'diario.exportar', label: 'Exportar Diário (PDF)' },
+                      { id: 'financeiro.notas.lancar', label: 'Lançar Notas Fiscais' },
+                      { id: 'financeiro.notas.baixar', label: 'Registrar Pagamento' },
+                      { id: 'financeiro.notas.editar', label: 'Editar Notas Fiscais' },
+                      { id: 'financeiro.notas.excluir', label: 'Excluir Notas Fiscais' },
+                      { id: 'financeiro.contas-pagar', label: 'Visualizar Contas a Pagar' },
+                      { id: 'financeiro.contas-pagas', label: 'Visualizar Contas Pagas' },
+                      { id: 'financeiro.exportar-excel', label: 'Exportar Financeiro (Excel)' },
+                      { id: 'financeiro.exportar-pdf', label: 'Exportar Financeiro (PDF)' },
+                      { id: 'suprimentos.fornecedores', label: 'Gerenciar Fornecedores' },
+                      { id: 'suprimentos.pedidos', label: 'Gerenciar Pedidos de Compra' },
+                      { id: 'relatorios.acessar', label: 'Acessar Relatórios' },
+                      { id: 'relatorios.mapa-chuvas', label: 'Gerar Mapa de Chuvas' },
+                      { id: 'usuarios.gerenciar', label: 'Gerenciar Usuários' }
+                    ].map(perm => (
+                      <label key={perm.id} className="flex items-center">
+                        <input type="checkbox" checked={permissions.includes(perm.id)} onChange={(e) => {
+                          if (e.target.checked) setPermissions(prev => [...prev, perm.id]);
+                          else setPermissions(prev => prev.filter(p => p !== perm.id));
+                        }} className="mr-2" />
+                        {perm.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Obras autorizadas */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">🏗️ Obras Autorizadas</label>
+                  <select multiple value={obrasAutorizadas} onChange={(e) => {
+                    const selected = Array.from(e.target.selectedOptions, option => option.value);
+                    setObrasAutorizadas(selected);
+                  }} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 h-32">
                     {obras.map(obra => (
-                      <option key={obra.id} value={obra.id.toString()}>
-                        {obra.nome}
-                      </option>
+                      <option key={obra.id} value={obra.id.toString()}>{obra.nome}</option>
                     ))}
                   </select>
                 </div>
 
                 <div className="flex gap-3 pt-4">
-                  <button
-                    type="submit"
-                    className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition"
-                  >
+                  <button type="submit" className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition">
                     {currentUsuario ? 'Atualizar Usuário' : 'Criar Usuário'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowModal(false)}
-                    className="flex-1 py-2 px-4 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-lg transition"
-                  >
+                  <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-2 px-4 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-lg transition">
                     Cancelar
                   </button>
                 </div>
