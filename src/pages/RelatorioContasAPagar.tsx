@@ -140,7 +140,7 @@ const notasAPagar = todasNotasRes.data.filter(n => statusPermitidos.includes(n.s
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Contas Pagas</h1>
+        <h1 className="text-2xl font-bold">Contas a Pagar</h1>
         <div className="flex gap-3">
           <button
             onClick={exportarPDF}

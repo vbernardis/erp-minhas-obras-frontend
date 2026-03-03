@@ -244,10 +244,10 @@ const exportarPDFLista = () => {
             <FiFileText className="mr-1" /> Exportar PDF
           </button>
           
-          <button
+        <button
             onClick={() => {
               const params = obraFiltro ? `?obra_id=${obraFiltro}` : '';
-              // ✅ URL corrigida
+              // ✅ URL corrigida (sem espaços extras)
               window.open(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/excel${params}`, '_blank');
             }}
             className="flex items-center px-3 py-2 bg-yellow-600 text-white text-sm rounded-lg hover:bg-yellow-700"
