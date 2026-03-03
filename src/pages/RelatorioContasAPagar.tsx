@@ -17,6 +17,10 @@ interface NotaFiscal {
   valor_pago: number | null;
   status: string;
   fornecedores: { nome_fantasia: string } | null;
+  // ✅ Novos campos financeiros
+  desconto?: number | null;
+  juros?: number | null;
+  impostos_retidos?: number | null;
 }
 
 interface Obra {
@@ -95,7 +99,7 @@ export default function RelatorioContasAPagar() {
     return true;
   });
 
-  // ✅ Exportar PDF com datas DD/MM/AAAA e valores formatados
+  // ✅ Exportar PDF com datas DD/MM/AAAA e valores formatados + novas colunas
   const exportarPDF = () => {
     const doc = new jsPDF('landscape', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.width;
@@ -112,6 +116,7 @@ export default function RelatorioContasAPagar() {
       doc.text(`Período: ${dataInicio ? formatarDataBR(dataInicio) : '—'} até ${dataFim ? formatarDataBR(dataFim) : '—'}`, 20, 42);
     }
 
+    // ✅ Dados da tabela com NOVAS COLUNAS: Desconto, Juros, Imp. Retidos
     const tableData = notasFiltradas.map(n => [
       n.numero_nota || '—',
       n.fornecedores?.nome_fantasia || '—',
@@ -119,34 +124,41 @@ export default function RelatorioContasAPagar() {
       formatarDataBR(n.data_vencimento),
       formatarDataBR(n.data_pagamento),
       formatarMoedaBR(n.valor_total),
-      formatarMoedaBR(n.valor_pago)
+      formatarMoedaBR(n.valor_pago),
+      formatarMoedaBR(n.desconto),        // ✅ Nova coluna
+      formatarMoedaBR(n.juros),            // ✅ Nova coluna
+      formatarMoedaBR(n.impostos_retidos)  // ✅ Nova coluna
     ]);
 
     (doc as any).autoTable({
-      startY: dataInicio || dataFim ? 52 : 45,
-      head: [['NF', 'Fornecedor', 'Emissão', 'Vencimento', 'Pagamento', 'Valor Total', 'Valor Pago']],
+      startY: dataInicio || dataFim ? 60 : 45,
+      // ✅ Cabeçalho com novas colunas
+      head: [['NF', 'Fornecedor', 'Emissão', 'Vencimento', 'Pagamento', 'Vlr. Total', 'Vlr. Pago', 'Desconto', 'Juros', 'Imp. Retidos']],
       body: tableData,
       theme: 'grid',
       headStyles: { fillColor: [30, 58, 138] },
-      bodyStyles: { fontSize: 8 },
+      bodyStyles: { fontSize: 7 },
       columnStyles: {
-        0: { cellWidth: 20 },
-        1: { cellWidth: 45 },
-        2: { cellWidth: 25, halign: 'center' },
-        3: { cellWidth: 25, halign: 'center' },
-        4: { cellWidth: 25, halign: 'center' },
-        5: { cellWidth: 30, halign: 'right' },
-        6: { cellWidth: 30, halign: 'right' }
+        0: { cellWidth: 18 },
+        1: { cellWidth: 35 },
+        2: { cellWidth: 20, halign: 'center' },
+        3: { cellWidth: 20, halign: 'center' },
+        4: { cellWidth: 20, halign: 'center' },
+        5: { cellWidth: 22, halign: 'right' },
+        6: { cellWidth: 22, halign: 'right' },
+        7: { cellWidth: 18, halign: 'right' },  // Desconto
+        8: { cellWidth: 18, halign: 'right' },  // Juros
+        9: { cellWidth: 20, halign: 'right' }   // Imp. Retidos
       }
     });
 
     doc.save(`contas-a-pagar-${obraNome.replace(/\s+/g, '-')}.pdf`);
   };
 
-  // ✅ Exportar Excel com datas DD/MM/AAAA e números formatados como moeda BR
+  // ✅ Exportar Excel com datas DD/MM/AAAA, números formatados como moeda BR + novas colunas
   const exportarExcel = () => {
     const data = [
-      ['NF', 'Fornecedor', 'Emissão', 'Vencimento', 'Pagamento', 'Valor Total', 'Valor Pago'],
+      ['NF', 'Fornecedor', 'Emissão', 'Vencimento', 'Pagamento', 'Valor Total', 'Valor Pago', 'Desconto', 'Juros', 'Imp. Retidos'],
       ...notasFiltradas.map(n => [
         n.numero_nota || '—',
         n.fornecedores?.nome_fantasia || '—',
@@ -154,28 +166,33 @@ export default function RelatorioContasAPagar() {
         formatarDataBR(n.data_vencimento),
         formatarDataBR(n.data_pagamento),
         valorOuZero(n.valor_total),
-        valorOuZero(n.valor_pago)
+        valorOuZero(n.valor_pago),
+        valorOuZero(n.desconto),        // ✅ Nova coluna
+        valorOuZero(n.juros),            // ✅ Nova coluna
+        valorOuZero(n.impostos_retidos)  // ✅ Nova coluna
       ])
     ];
 
     const ws = XLSX.utils.aoa_to_sheet(data);
     
-    // ✅ Ajustar largura das colunas
+    // ✅ Ajustar largura das colunas (10 colunas agora)
     ws['!cols'] = [
       { wch: 12 },  // NF
       { wch: 30 },  // Fornecedor
       { wch: 12 },  // Emissão
       { wch: 12 },  // Vencimento
       { wch: 12 },  // Pagamento
-      { wch: 18 },  // Valor Total
-      { wch: 18 }   // Valor Pago
+      { wch: 16 },  // Valor Total
+      { wch: 16 },  // Valor Pago
+      { wch: 14 },  // Desconto
+      { wch: 14 },  // Juros
+      { wch: 16 }   // Imp. Retidos
     ];
     
-    // ✅ Aplicar formatação de moeda brasileira nas colunas 6 e 7 (índices 5 e 6)
-    // Formato: R$ #.##0,00
+    // ✅ Aplicar formatação de moeda brasileira nas colunas de valores (índices 5 a 9)
     const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
     for (let R = range.s.r + 1; R <= range.e.r; R++) {
-      for (let C = 5; C <= 6; C++) {
+      for (let C = 5; C <= 9; C++) {
         const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
         if (ws[cellAddress]) {
           ws[cellAddress].z = 'R$ #.##0,00'; // ✅ Formato monetário brasileiro
@@ -258,7 +275,8 @@ export default function RelatorioContasAPagar() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      {/* ✅ Tabela com NOVAS COLUNAS e rolagem horizontal */}
+      <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -269,23 +287,29 @@ export default function RelatorioContasAPagar() {
               <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase">Pagamento</th>
               <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase">Valor Total</th>
               <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase">Valor Pago</th>
+              <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase">Desconto</th>
+              <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase">Juros</th>
+              <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase">Imp. Retidos</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {notasFiltradas.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-4 text-center text-gray-500">Nenhuma conta a pagar encontrada no período selecionado.</td></tr>
+              <tr><td colSpan={10} className="px-4 py-4 text-center text-gray-500">Nenhuma conta a pagar encontrada no período selecionado.</td></tr>
             ) : (
               notasFiltradas.map(n => (
                 <tr key={n.id}>
-                  <td className="px-4 py-2">{n.numero_nota || '—'}</td>
-                  <td className="px-4 py-2">{n.fornecedores?.nome_fantasia || '—'}</td>
+                  <td className="px-4 py-2 whitespace-nowrap">{n.numero_nota || '—'}</td>
+                  <td className="px-4 py-2 whitespace-nowrap">{n.fornecedores?.nome_fantasia || '—'}</td>
                   {/* ✅ Datas formatadas como DD/MM/AAAA */}
-                  <td className="px-4 py-2 text-center">{formatarDataBR(n.data_emissao)}</td>
-                  <td className="px-4 py-2 text-center">{formatarDataBR(n.data_vencimento)}</td>
-                  <td className="px-4 py-2 text-center">{formatarDataBR(n.data_pagamento)}</td>
+                  <td className="px-4 py-2 text-center whitespace-nowrap">{formatarDataBR(n.data_emissao)}</td>
+                  <td className="px-4 py-2 text-center whitespace-nowrap">{formatarDataBR(n.data_vencimento)}</td>
+                  <td className="px-4 py-2 text-center whitespace-nowrap">{formatarDataBR(n.data_pagamento)}</td>
                   {/* ✅ Valores formatados como moeda */}
-                  <td className="px-4 py-2 text-right">{formatarMoedaBR(n.valor_total)}</td>
-                  <td className="px-4 py-2 text-right font-bold text-blue-700">{formatarMoedaBR(n.valor_pago)}</td>
+                  <td className="px-4 py-2 text-right whitespace-nowrap">{formatarMoedaBR(n.valor_total)}</td>
+                  <td className="px-4 py-2 text-right font-bold text-blue-700 whitespace-nowrap">{formatarMoedaBR(n.valor_pago)}</td>
+                  <td className="px-4 py-2 text-right text-red-600 whitespace-nowrap">{formatarMoedaBR(n.desconto)}</td>
+                  <td className="px-4 py-2 text-right text-green-600 whitespace-nowrap">{formatarMoedaBR(n.juros)}</td>
+                  <td className="px-4 py-2 text-right text-purple-600 whitespace-nowrap">{formatarMoedaBR(n.impostos_retidos)}</td>
                 </tr>
               ))
             )}
