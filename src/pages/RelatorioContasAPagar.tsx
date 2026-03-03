@@ -100,60 +100,86 @@ export default function RelatorioContasAPagar() {
   });
 
   // ✅ Exportar PDF com datas DD/MM/AAAA e valores formatados + novas colunas
-  const exportarPDF = () => {
-    const doc = new jsPDF('landscape', 'mm', 'a4');
-    const pageWidth = doc.internal.pageSize.width;
+  // ✅ Exportar PDF com colunas ajustadas para A4 paisagem (297mm)
+const exportarPDF = () => {
+  const doc = new jsPDF('landscape', 'mm', 'a4');
+  const pageWidth = doc.internal.pageSize.width; // 297mm
+  const pageHeight = doc.internal.pageSize.height; // 210mm
+  const margin = 8; // margem reduzida para aproveitar mais espaço
+  const usableWidth = pageWidth - (margin * 2); // ~281mm utilizáveis
 
-    doc.setFontSize(16);
-    doc.text('ERP MINHAS OBRAS', pageWidth / 2, 15, { align: 'center' });
-    doc.setFontSize(14);
-    doc.text('Relatório de Contas a Pagar', pageWidth / 2, 25, { align: 'center' });
-    doc.setFontSize(11);
-    doc.text(`Obra: ${obraNome}`, 20, 35);
-    
-    // ✅ Mostrar período no PDF se filtrado
-    if (dataInicio || dataFim) {
-      doc.text(`Período: ${dataInicio ? formatarDataBR(dataInicio) : '—'} até ${dataFim ? formatarDataBR(dataFim) : '—'}`, 20, 42);
-    }
+  doc.setFontSize(16);
+  doc.text('ERP MINHAS OBRAS', pageWidth / 2, 12, { align: 'center' });
+  doc.setFontSize(14);
+  doc.text('Relatório de Contas a Pagar', pageWidth / 2, 22, { align: 'center' });
+  doc.setFontSize(11);
+  doc.text(`Obra: ${obraNome}`, margin, 32);
+  
+  // ✅ Mostrar período no PDF se filtrado
+  if (dataInicio || dataFim) {
+    doc.text(`Período: ${dataInicio ? formatarDataBR(dataInicio) : '—'} até ${dataFim ? formatarDataBR(dataFim) : '—'}`, margin, 38);
+  }
 
-    // ✅ Dados da tabela com NOVAS COLUNAS: Desconto, Juros, Imp. Retidos
-    const tableData = notasFiltradas.map(n => [
-      n.numero_nota || '—',
-      n.fornecedores?.nome_fantasia || '—',
-      formatarDataBR(n.data_emissao),
-      formatarDataBR(n.data_vencimento),
-      formatarDataBR(n.data_pagamento),
-      formatarMoedaBR(n.valor_total),
-      formatarMoedaBR(n.valor_pago),
-      formatarMoedaBR(n.desconto),        // ✅ Nova coluna
-      formatarMoedaBR(n.juros),            // ✅ Nova coluna
-      formatarMoedaBR(n.impostos_retidos)  // ✅ Nova coluna
-    ]);
+  // ✅ Dados da tabela com NOVAS COLUNAS: Desconto, Juros, Imp. Retidos
+  const tableData = notasFiltradas.map(n => [
+    n.numero_nota || '—',
+    n.fornecedores?.nome_fantasia || '—',
+    formatarDataBR(n.data_emissao),
+    formatarDataBR(n.data_vencimento),
+    formatarDataBR(n.data_pagamento),
+    formatarMoedaBR(n.valor_total),
+    formatarMoedaBR(n.valor_pago),
+    formatarMoedaBR(n.desconto),
+    formatarMoedaBR(n.juros),
+    formatarMoedaBR(n.impostos_retidos)
+  ]);
 
-    (doc as any).autoTable({
-      startY: dataInicio || dataFim ? 60 : 45,
-      // ✅ Cabeçalho com novas colunas
-      head: [['NF', 'Fornecedor', 'Emissão', 'Vencimento', 'Pagamento', 'Vlr. Total', 'Vlr. Pago', 'Desconto', 'Juros', 'Imp. Retidos']],
-      body: tableData,
-      theme: 'grid',
-      headStyles: { fillColor: [30, 58, 138] },
-      bodyStyles: { fontSize: 7 },
-      columnStyles: {
-        0: { cellWidth: 18 },
-        1: { cellWidth: 35 },
-        2: { cellWidth: 20, halign: 'center' },
-        3: { cellWidth: 20, halign: 'center' },
-        4: { cellWidth: 20, halign: 'center' },
-        5: { cellWidth: 22, halign: 'right' },
-        6: { cellWidth: 22, halign: 'right' },
-        7: { cellWidth: 18, halign: 'right' },  // Desconto
-        8: { cellWidth: 18, halign: 'right' },  // Juros
-        9: { cellWidth: 20, halign: 'right' }   // Imp. Retidos
-      }
-    });
-
-    doc.save(`contas-a-pagar-${obraNome.replace(/\s+/g, '-')}.pdf`);
+  // ✅ Larguras das colunas somando ~281mm (usando toda a largura da página)
+  // Total: 18+60+22+22+22+26+26+24+22+19 = 261mm + 20mm margens = 281mm
+  const columnWidths = {
+    0: { cellWidth: 18, halign: 'center' },      // NF
+    1: { cellWidth: 60, halign: 'left' },         // Fornecedor (maior, para nomes longos)
+    2: { cellWidth: 22, halign: 'center' },       // Emissão
+    3: { cellWidth: 22, halign: 'center' },       // Vencimento
+    4: { cellWidth: 22, halign: 'center' },       // Pagamento
+    5: { cellWidth: 26, halign: 'right' },        // Vlr. Total
+    6: { cellWidth: 26, halign: 'right' },        // Vlr. Pago
+    7: { cellWidth: 24, halign: 'right' },        // Desconto
+    8: { cellWidth: 22, halign: 'right' },        // Juros
+    9: { cellWidth: 19, halign: 'right' }         // Imp. Retidos
   };
+
+  (doc as any).autoTable({
+    startY: dataInicio || dataFim ? 45 : 38,
+    margin: { left: margin, right: margin },
+    // ✅ Cabeçalho com novas colunas
+    head: [['NF', 'Fornecedor', 'Emissão', 'Vencimento', 'Pagamento', 'Vlr. Total', 'Vlr. Pago', 'Desconto', 'Juros', 'Imp. Retidos']],
+    body: tableData,
+    theme: 'grid',
+    headStyles: { 
+      fillColor: [30, 58, 138],
+      textColor: [255, 255, 255],
+      fontSize: 8,           // ✅ Fonte menor para cabeçalho caber
+      fontStyle: 'bold',
+      halign: 'center',
+      cellPadding: 2
+    },
+    bodyStyles: { 
+      fontSize: 7,           // ✅ Fonte menor para corpo
+      cellPadding: 2,
+      overflow: 'visible'    // ✅ Evita quebra de texto
+    },
+    columnStyles: columnWidths,
+    styles: {
+      lineWidth: 0.1,
+      lineColor: [200, 200, 200]
+    },
+    // ✅ Garantir que a tabela use toda a largura disponível
+    tableWidth: usableWidth
+  });
+
+  doc.save(`contas-a-pagar-${obraNome.replace(/\s+/g, '-')}.pdf`);
+};
 
   // ✅ Exportar Excel com datas DD/MM/AAAA, números formatados como moeda BR + novas colunas
   const exportarExcel = () => {
