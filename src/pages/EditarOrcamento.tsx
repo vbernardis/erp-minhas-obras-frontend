@@ -1,5 +1,5 @@
 // src/pages/EditarOrcamento.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../utils/api';
 import { hasPermission } from '../utils/permissions';
@@ -26,6 +26,7 @@ export default function EditarOrcamento() {
   const [taxaAdministracao, setTaxaAdministracao] = useState<number>(0);
   const [dataBase, setDataBase] = useState<string>('');
   const [status, setStatus] = useState('Em desenvolvimento');
+  const [loading, setLoading] = useState(true);
 
   // ✅ Estado para rascunhos dos campos em edição
   const [valorEmEdicao, setValorEmEdicao] = useState<Record<string, string>>({});
@@ -40,10 +41,12 @@ export default function EditarOrcamento() {
       navigate('/dashboard');
       return;
     }
+    carregarObras();
     if (orcId) {
       carregarOrcamento();
+    } else {
+      setLoading(false);
     }
-    carregarObras();
   }, [id]);
 
   const carregarObras = async () => {
@@ -64,8 +67,8 @@ export default function EditarOrcamento() {
       setDataBase(orc.data_base || new Date().toISOString().split('T')[0]);
       setStatus(orc.status || 'Em desenvolvimento');
 
-      const itensFormatados = (orc.itens || []).map((item: any) => ({
-        id: item.id.toString(),
+      const itensFormatados = (orc.itens || []).map((item: any, idx: number) => ({
+        id: item.id ? item.id.toString() : `temp_${Date.now()}_${idx}`,
         nivel: item.nivel,
         descricao: item.descricao,
         unidade: item.unidade || undefined,
@@ -75,14 +78,66 @@ export default function EditarOrcamento() {
       }));
       setItens(itensFormatados);
     } catch (err) {
+      console.error('Erro ao carregar orçamento:', err);
       alert('Erro ao carregar orçamento.');
       navigate('/orcamentos/lista');
+    } finally {
+      setLoading(false);
     }
   };
 
+  // ✅ FUNÇÃO OTIMIZADA: Gera códigos uma vez e armazena em memo
+  const codigosGerados = useMemo(() => {
+    const codigos: Record<string, string> = {};
+    
+    let contadorLocal = 0;
+    const contadorEtapa: Record<number, number> = {};
+    const contadorSubetapa: Record<string, number> = {};
+
+    itens.forEach((item, index) => {
+      let codigo = '';
+
+      if (item.nivel === 'local') {
+        contadorLocal++;
+        codigo = String(contadorLocal).padStart(2, '0');
+        contadorEtapa[contadorLocal] = 0;
+      } else if (item.nivel === 'etapa') {
+        const localAtual = contadorLocal;
+        contadorEtapa[localAtual] = (contadorEtapa[localAtual] || 0) + 1;
+        codigo = `${String(localAtual).padStart(2, '0')}.${String(contadorEtapa[localAtual]).padStart(2, '0')}`;
+      } else if (item.nivel === 'subetapa') {
+        const localAtual = contadorLocal;
+        const etapaAtual = contadorEtapa[localAtual] || 1;
+        const key = `${localAtual}-${etapaAtual}`;
+        contadorSubetapa[key] = (contadorSubetapa[key] || 0) + 1;
+        codigo = `${String(localAtual).padStart(2, '0')}.${String(etapaAtual).padStart(2, '0')}.${String(contadorSubetapa[key]).padStart(2, '0')}`;
+      } else if (item.nivel === 'servico') {
+        const localAtual = contadorLocal;
+        const etapaAtual = contadorEtapa[localAtual] || 1;
+        const subetapaAtual = contadorSubetapa[`${localAtual}-${etapaAtual}`] || 1;
+        const keyServico = `${localAtual}-${etapaAtual}-${subetapaAtual}`;
+        
+        // Conta quantos serviços já existem nesta subetapa
+        const servicosNaSubetapa = itens
+          .slice(0, index)
+          .filter(i => 
+            i.nivel === 'servico' && 
+            codigos[i.id]?.startsWith(`${String(localAtual).padStart(2, '0')}.${String(etapaAtual).padStart(2, '0')}.${String(subetapaAtual).padStart(2, '0')}`)
+          ).length + 1;
+        
+        codigo = `${String(localAtual).padStart(2, '0')}.${String(etapaAtual).padStart(2, '0')}.${String(subetapaAtual).padStart(2, '0')}.${String(servicosNaSubetapa).padStart(2, '0')}`;
+      }
+
+      codigos[item.id] = codigo;
+    });
+
+    return codigos;
+  }, [itens]);
+
   const adicionarLinha = (nivel: ItemOrcamento['nivel'], afterId?: string) => {
     const novoId = Date.now().toString();
-    const novoItem = { id: novoId, nivel, descricao: '' };
+    const novoItem: ItemOrcamento = { id: novoId, nivel, descricao: '' };
+    
     if (afterId) {
       const index = itens.findIndex(item => item.id === afterId);
       if (index !== -1) {
@@ -113,78 +168,17 @@ export default function EditarOrcamento() {
     });
   };
 
-  const gerarCodigo = (index: number): string => {
-    const item = itens[index];
-    if (!item) return '';
-
-    if (item.nivel === 'local') {
-      const locais = itens.filter(i => i.nivel === 'local');
-      const seq = locais.indexOf(item) + 1;
-      return String(seq).padStart(2, '0');
-    }
-
-    if (item.nivel === 'etapa') {
-      let localIndex = -1;
-      for (let i = index - 1; i >= 0; i--) {
-        if (itens[i].nivel === 'local') {
-          localIndex = i;
-          break;
-        }
-      }
-      if (localIndex === -1) return '01.01';
-      const localSeq = gerarCodigo(localIndex);
-      const etapasDoLocal = itens
-        .slice(0, index)
-        .filter(i => i.nivel === 'etapa' && gerarCodigo(itens.indexOf(i)).startsWith(localSeq));
-      const seq = etapasDoLocal.length + 1;
-      return `${localSeq}.${String(seq).padStart(2, '0')}`;
-    }
-
-    if (item.nivel === 'subetapa') {
-      let etapaIndex = -1;
-      for (let i = index - 1; i >= 0; i--) {
-        if (itens[i].nivel === 'etapa') {
-          etapaIndex = i;
-          break;
-        }
-      }
-      if (etapaIndex === -1) return '01.01.01';
-      const etapaCodigo = gerarCodigo(etapaIndex);
-      const subetapasDaEtapa = itens
-        .slice(0, index)
-        .filter(i => i.nivel === 'subetapa' && gerarCodigo(itens.indexOf(i)).startsWith(etapaCodigo));
-      const seq = subetapasDaEtapa.length + 1;
-      return `${etapaCodigo}.${String(seq).padStart(2, '0')}`;
-    }
-
-    if (item.nivel === 'servico') {
-      let parentIndex = -1;
-      for (let i = index - 1; i >= 0; i--) {
-        if (itens[i].nivel === 'subetapa' || itens[i].nivel === 'etapa') {
-          parentIndex = i;
-          break;
-        }
-      }
-      if (parentIndex === -1) return '01.01.01.01';
-      const parentCodigo = gerarCodigo(parentIndex);
-      const servicosDoPai = itens
-        .slice(0, index)
-        .filter(i => i.nivel === 'servico' && gerarCodigo(itens.indexOf(i)).startsWith(parentCodigo));
-      const seq = servicosDoPai.length + 1;
-      return `${parentCodigo}.${String(seq).padStart(2, '0')}`;
-    }
-
-    return '';
-  };
-
-  const subtotal = itens
-    .filter(i => i.nivel === 'servico')
-    .reduce((sum, i) => {
-      const qtd = i.quantidade || 0;
-      const mat = i.valor_unitario_material || 0;
-      const mao = i.valor_unitario_mao_obra || 0;
-      return sum + qtd * (mat + mao);
-    }, 0);
+  // ✅ Cálculo de totais otimizado
+  const subtotal = useMemo(() => {
+    return itens
+      .filter(i => i.nivel === 'servico')
+      .reduce((sum, i) => {
+        const qtd = i.quantidade || 0;
+        const mat = i.valor_unitario_material || 0;
+        const mao = i.valor_unitario_mao_obra || 0;
+        return sum + qtd * (mat + mao);
+      }, 0);
+  }, [itens]);
 
   const valorTotal = subtotal * (1 + taxaAdministracao / 100);
 
@@ -197,13 +191,22 @@ export default function EditarOrcamento() {
       alert('Selecione uma obra.');
       return;
     }
+    
+    // Filtra apenas itens com descrição preenchida
+    const itensValidos = itens.filter(item => item.descricao?.trim());
+    
+    if (itensValidos.length === 0) {
+      alert('Adicione pelo menos um item ao orçamento.');
+      return;
+    }
+
     try {
       await api.put(`/orcamentos/${orcId}`, {
         obra_id: obraSelecionada,
         data_base: dataBase,
         taxa_administracao: taxaAdministracao,
         status,
-        itens: itens.map(item => ({
+        itens: itensValidos.map(item => ({
           nivel: item.nivel,
           descricao: item.descricao,
           unidade: item.unidade,
@@ -214,15 +217,26 @@ export default function EditarOrcamento() {
       });
       alert('Orçamento atualizado com sucesso!');
       navigate('/orcamentos/lista');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao salvar orçamento:', err);
-      alert('Erro ao salvar orçamento.');
+      const msg = err.response?.data?.error || err.message || 'Erro desconhecido';
+      alert('Erro ao salvar orçamento: ' + msg);
     }
   };
 
   const exportarPDF = () => {
-    window.open(`/orcamentos/${orcId}/pdf`, '_blank');
+    // ✅ URL corrigida (sem espaços)
+    window.open(`https://erp-minhas-obras-backend.onrender.com/orcamentos/${orcId}/pdf`, '_blank');
   };
+
+  const exportarExcel = () => {
+    // ✅ URL corrigida (sem espaços)
+    window.open(`https://erp-minhas-obras-backend.onrender.com/orcamentos/${orcId}/excel`, '_blank');
+  };
+
+  if (loading) {
+    return <div className="p-6 text-center">Carregando orçamento...</div>;
+  }
 
   return (
     <div>
@@ -237,6 +251,7 @@ export default function EditarOrcamento() {
               value={obraSelecionada}
               onChange={e => setObraSelecionada(Number(e.target.value) || '')}
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              disabled
             >
               <option value="">Selecione uma obra</option>
               {obras.map(obra => (
@@ -245,6 +260,7 @@ export default function EditarOrcamento() {
                 </option>
               ))}
             </select>
+            <p className="text-xs text-gray-500 mt-1">Obra não pode ser alterada após criação</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">Data Base</label>
@@ -328,8 +344,8 @@ export default function EditarOrcamento() {
             </tr>
           </thead>
           <tbody className="bg-gray-50">
-            {itens.map((item, idx) => {
-              const codigo = gerarCodigo(idx);
+            {itens.map((item) => {
+              const codigo = codigosGerados[item.id] || '';
               const isServico = item.nivel === 'servico';
               const qtd = item.quantidade || 0;
               const matUnit = item.valor_unitario_material || 0;
@@ -533,14 +549,20 @@ export default function EditarOrcamento() {
         >
           Salvar Alterações
         </button>
-        <a
-          href={`https://erp-minhas-obras-backend.onrender.com/orcamentos/${id}/pdf`}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          type="button"
+          onClick={exportarPDF}
           className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
         >
           Exportar PDF
-        </a>
+        </button>
+        <button
+          type="button"
+          onClick={exportarExcel}
+          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+        >
+          Exportar Excel
+        </button>
         <button
           type="button"
           onClick={() => navigate('/orcamentos/lista')}
@@ -548,15 +570,6 @@ export default function EditarOrcamento() {
         >
           ← Voltar
         </button>
-
-        <a
-          href={`https://erp-minhas-obras-backend.onrender.com/orcamentos/${id}/excel`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="px-4 py-2 bg-green-600 text-white text-xs rounded hover:bg-green-700"
-        >
-          Excel
-        </a>
       </div>
     </div>
   );
