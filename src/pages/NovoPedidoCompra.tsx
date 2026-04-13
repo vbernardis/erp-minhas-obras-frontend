@@ -13,6 +13,14 @@ interface Obra {
 interface Fornecedor {
   id: number;
   nome_fantasia: string;
+  cidade?: string;
+  uf?: string;
+}
+
+interface ServicoOrcamento {
+  id: number;
+  codigo: string;
+  descricao: string;
 }
 
 interface ItemPedido {
@@ -21,12 +29,21 @@ interface ItemPedido {
   quantidade: number;
   unidade: string;
   valor_unitario: number;
+  desconto: number; // ✅ Novo campo
   impostos: number;
+  orcamento_item_id: number | null;
 }
+
+// ✅ Função para formatar número decimal com vírgula e 2 casas
+const formatarDecimalInput = (valor: number): string => {
+  if (isNaN(valor) || valor === null || valor === undefined) return '';
+  return valor.toFixed(2).replace('.', ',');
+};
 
 export default function NovoPedidoCompra() {
   const [obras, setObras] = useState<Obra[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
+  const [servicos, setServicos] = useState<ServicoOrcamento[]>([]);
   const [formData, setFormData] = useState({
     obra_id: '',
     fornecedor_id: '',
@@ -36,10 +53,18 @@ export default function NovoPedidoCompra() {
     uf: '',
     observacoes: ''
   });
-  const [itens, setItens] = useState<ItemPedido[]>([{ id: 1, descricao: '', quantidade: 1, unidade: '', valor_unitario: 0, impostos: 0 }]);
+  const [itens, setItens] = useState<ItemPedido[]>([{ 
+    id: 1, 
+    descricao: '', 
+    quantidade: 1, 
+    unidade: '', 
+    valor_unitario: 0, 
+    desconto: 0, // ✅ Inicializado
+    impostos: 0, 
+    orcamento_item_id: null 
+  }]);
   const navigate = useNavigate();
 
-  // ✅ Estado para rascunhos dos campos numéricos
   const [valorEmEdicao, setValorEmEdicao] = useState<Record<string, string>>({});
 
   const carregarDados = async () => {
@@ -55,22 +80,60 @@ export default function NovoPedidoCompra() {
     }
   };
 
+  // ✅ Carregar serviços do orçamento quando obra muda
+  useEffect(() => {
+    if (formData.obra_id) {
+      axios.get<ServicoOrcamento[]>(`https://erp-minhas-obras-backend.onrender.com/obras/${formData.obra_id}/servicos-orcamento`)
+        .then(res => setServicos(res.data))
+        .catch(() => setServicos([]));
+    } else {
+      setServicos([]);
+    }
+  }, [formData.obra_id]);
+
   useEffect(() => {
     carregarDados();
   }, []);
 
+  // ✅ Atualiza cidade e UF quando fornecedor muda
+  useEffect(() => {
+    if (formData.fornecedor_id) {
+      const fornecedor = fornecedores.find(f => f.id === Number(formData.fornecedor_id));
+      if (fornecedor) {
+        setFormData(prev => ({
+          ...prev,
+          cidade: fornecedor.cidade || '',
+          uf: fornecedor.uf || ''
+        }));
+      } else {
+        setFormData(prev => ({ ...prev, cidade: '', uf: '' }));
+      }
+    } else {
+      setFormData(prev => ({ ...prev, cidade: '', uf: '' }));
+    }
+  }, [formData.fornecedor_id, fornecedores]);
+
   const adicionarItem = () => {
-    setItens([...itens, { id: Date.now(), descricao: '', quantidade: 1, unidade: '', valor_unitario: 0, impostos: 0 }]);
+    setItens([...itens, { 
+      id: Date.now(), 
+      descricao: '', 
+      quantidade: 1, 
+      unidade: '', 
+      valor_unitario: 0, 
+      desconto: 0, // ✅ Novo campo
+      impostos: 0, 
+      orcamento_item_id: null 
+    }]);
   };
 
   const removerItem = (id: number) => {
     if (itens.length > 1) {
       setItens(itens.filter(item => item.id !== id));
-      // Limpa rascunhos
       setValorEmEdicao(prev => {
         const novo = { ...prev };
         delete novo[`qtd_${id}`];
         delete novo[`unit_${id}`];
+        delete novo[`desc_${id}`]; // ✅ Limpa desconto
         delete novo[`imp_${id}`];
         return novo;
       });
@@ -83,10 +146,14 @@ export default function NovoPedidoCompra() {
     ));
   };
 
-  // ✅ Função para exibir número com vírgula
-  const numeroParaInput = (valor: number | undefined): string => {
-    if (valor === undefined || valor === null || isNaN(valor)) return '';
-    return valor.toString().replace('.', ',');
+  // ✅ Calcular valor total do pedido
+  const calcularValorTotal = () => {
+    const totalItens = itens.reduce((sum, item) => {
+      const subtotal = (item.quantidade * item.valor_unitario) - item.desconto;
+      return sum + Math.max(0, subtotal) + item.impostos;
+    }, 0);
+    const frete = parseFloat(formData.frete) || 0;
+    return totalItens + frete;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -97,10 +164,9 @@ export default function NovoPedidoCompra() {
       return;
     }
 
-    // Calcular valor_total por item
     const itensComTotal = itens.map(item => ({
       ...item,
-      valor_total: (item.quantidade * item.valor_unitario) + item.impostos
+      valor_total: Math.max(0, (item.quantidade * item.valor_unitario) - item.desconto) + item.impostos
     }));
 
     try {
@@ -233,8 +299,10 @@ export default function NovoPedidoCompra() {
                     <th className="px-3 py-2">Qtd</th>
                     <th className="px-3 py-2">Unid.</th>
                     <th className="px-3 py-2">Vlr Unit.</th>
+                    <th className="px-3 py-2">Desconto</th> {/* ✅ Nova coluna */}
                     <th className="px-3 py-2">Impostos</th>
                     <th className="px-3 py-2">Total</th>
+                    <th className="px-3 py-2">Apropriação</th>
                     <th className="px-3 py-2"></th>
                   </tr>
                 </thead>
@@ -252,12 +320,13 @@ export default function NovoPedidoCompra() {
                         />
                       </td>
                       <td className="px-3 py-2">
-                        {/* ✅ Quantidade com vírgula */}
                         <input
                           type="text"
-                          value={valorEmEdicao[`qtd_${item.id}`] !== undefined 
-                            ? valorEmEdicao[`qtd_${item.id}`] 
-                            : numeroParaInput(item.quantidade)}
+                          value={
+                            valorEmEdicao[`qtd_${item.id}`] !== undefined
+                              ? valorEmEdicao[`qtd_${item.id}`]
+                              : formatarDecimalInput(item.quantidade)
+                          }
                           onChange={(e) => {
                             let valor = e.target.value;
                             valor = valor.replace(/[^0-9,]/g, '');
@@ -293,12 +362,13 @@ export default function NovoPedidoCompra() {
                         />
                       </td>
                       <td className="px-3 py-2">
-                        {/* ✅ Valor Unitário com vírgula */}
                         <input
                           type="text"
-                          value={valorEmEdicao[`unit_${item.id}`] !== undefined 
-                            ? valorEmEdicao[`unit_${item.id}`] 
-                            : numeroParaInput(item.valor_unitario)}
+                          value={
+                            valorEmEdicao[`unit_${item.id}`] !== undefined
+                              ? valorEmEdicao[`unit_${item.id}`]
+                              : formatarDecimalInput(item.valor_unitario)
+                          }
                           onChange={(e) => {
                             let valor = e.target.value;
                             valor = valor.replace(/[^0-9,]/g, '');
@@ -323,13 +393,46 @@ export default function NovoPedidoCompra() {
                           required
                         />
                       </td>
+                      {/* ✅ Campo de Desconto */}
                       <td className="px-3 py-2">
-                        {/* ✅ Impostos com vírgula */}
                         <input
                           type="text"
-                          value={valorEmEdicao[`imp_${item.id}`] !== undefined 
-                            ? valorEmEdicao[`imp_${item.id}`] 
-                            : numeroParaInput(item.impostos)}
+                          value={
+                            valorEmEdicao[`desc_${item.id}`] !== undefined
+                              ? valorEmEdicao[`desc_${item.id}`]
+                              : formatarDecimalInput(item.desconto)
+                          }
+                          onChange={(e) => {
+                            let valor = e.target.value;
+                            valor = valor.replace(/[^0-9,]/g, '');
+                            if (valor.startsWith(',')) valor = '0' + valor;
+                            setValorEmEdicao(prev => ({ ...prev, [`desc_${item.id}`]: valor }));
+                          }}
+                          onBlur={(e) => {
+                            const raw = valorEmEdicao[`desc_${item.id}`] || '';
+                            const num = raw ? parseFloat(raw.replace(',', '.')) : NaN;
+                            if (!isNaN(num) && num >= 0) {
+                              atualizarItem(item.id, 'desconto', num);
+                            } else {
+                              atualizarItem(item.id, 'desconto', 0);
+                            }
+                            setValorEmEdicao(prev => {
+                              const novo = { ...prev };
+                              delete novo[`desc_${item.id}`];
+                              return novo;
+                            });
+                          }}
+                          className="w-24 text-sm px-2 py-1 border border-gray-300 rounded"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="text"
+                          value={
+                            valorEmEdicao[`imp_${item.id}`] !== undefined
+                              ? valorEmEdicao[`imp_${item.id}`]
+                              : formatarDecimalInput(item.impostos)
+                          }
                           onChange={(e) => {
                             let valor = e.target.value;
                             valor = valor.replace(/[^0-9,]/g, '');
@@ -354,7 +457,35 @@ export default function NovoPedidoCompra() {
                         />
                       </td>
                       <td className="px-3 py-2 text-sm font-medium">
-                        {((item.quantidade * item.valor_unitario) + item.impostos).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        {(
+                          Math.max(0, (item.quantidade * item.valor_unitario) - item.desconto) + item.impostos
+                        ).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </td>
+                      {/* ✅ Campo de Apropriação com datalist funcional */}
+                      <td className="px-3 py-2">
+                        <input
+                          list={`servicos-${item.id}`}
+                          placeholder="Código ou descrição..."
+                          className="w-full text-sm px-2 py-1 border border-gray-300 rounded"
+                          onChange={(e) => {
+                            const valor = e.target.value;
+                            const selected = servicos.find(s =>
+                              `${s.codigo} - ${s.descricao}` === valor ||
+                              s.codigo === valor ||
+                              s.descricao === valor
+                            );
+                            atualizarItem(
+                              item.id,
+                              'orcamento_item_id',
+                              selected ? selected.id : null
+                            );
+                          }}
+                        />
+                        <datalist id={`servicos-${item.id}`}>
+                          {servicos.map(servico => (
+                            <option key={servico.id} value={`${servico.codigo} - ${servico.descricao}`} />
+                          ))}
+                        </datalist>
                       </td>
                       <td className="px-3 py-2">
                         {itens.length > 1 && (
@@ -371,6 +502,32 @@ export default function NovoPedidoCompra() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          {/* ✅ Exibir Valor Total do Pedido */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h3 className="text-lg font-bold text-blue-800 mb-2">Resumo do Pedido</h3>
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span>Total dos Itens:</span>
+                <span className="font-medium">
+                  R$ {itens.reduce((sum, item) => {
+                    const subtotal = (item.quantidade * item.valor_unitario) - item.desconto;
+                    return sum + Math.max(0, subtotal) + item.impostos;
+                  }, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Frete:</span>
+                <span className="font-medium">
+                  R$ {(parseFloat(formData.frete) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="border-t border-blue-300 pt-2 mt-2 flex justify-between font-bold text-lg text-blue-900">
+                <span>Valor Total do Pedido:</span>
+                <span>R$ {calcularValorTotal().toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
             </div>
           </div>
 

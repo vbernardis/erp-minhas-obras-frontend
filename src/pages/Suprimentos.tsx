@@ -105,20 +105,43 @@ let y = 32; // ajuste a posição inicial dos dados
       doc.text('ITENS', 20, y);
       y += 6;
 
-      const tableData = itens.map((item: any, i: number) => [
-        i + 1,
-        item.descricao || '—',
-        item.quantidade || '—',
-        item.unidade || '—',
-        item.valor_unitario ? `R$ ${parseFloat(item.valor_unitario).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—',
-        item.impostos ? `R$ ${parseFloat(item.impostos).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—',
-        item.valor_total ? `R$ ${parseFloat(item.valor_total).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'
-      ]);
+      // ✅ Buscar serviços do orçamento para apropriação
+      let servicosMap: Record<number, { codigo: string; descricao: string }> = {};
+      try {
+        const servicosRes = await axios.get(`https://erp-minhas-obras-backend.onrender.com/obras/${pedido.obra_id}/servicos-orcamento`);
+        if (Array.isArray(servicosRes.data)) {
+          servicosMap = servicosRes.data.reduce((acc, s: any) => {
+            acc[s.id] = { codigo: s.codigo, descricao: s.descricao };
+            return acc;
+          }, {} as Record<number, { codigo: string; descricao: string }>);
+        }
+      } catch (e) {
+        console.warn('Não foi possível carregar serviços do orçamento:', e);
+      }
+
+      const tableData = itens.map((item: any, i: number) => {
+        const apropriacao = item.orcamento_item_id 
+          ? (servicosMap[item.orcamento_item_id] 
+              ? `${servicosMap[item.orcamento_item_id].codigo} - ${servicosMap[item.orcamento_item_id].descricao}`
+              : '—')
+          : '—';
+
+        return [
+          i + 1,
+          item.descricao || '—',
+          item.quantidade || '—',
+          item.unidade || '—',
+          item.valor_unitario ? `R$ ${parseFloat(item.valor_unitario).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—',
+          item.impostos ? `R$ ${parseFloat(item.impostos).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—',
+          item.valor_total ? `R$ ${parseFloat(item.valor_total).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—',
+          apropriacao
+        ];
+      });
 
       (doc as any).autoTable({
         startY: y,
-        head: [['Item', 'Descrição', 'Qtd', 'Unid.', 'Vlr Unit.', 'Impostos', 'Total']],
-        body: tableData.length > 0 ? tableData : [['', '', '', '', '', '', 'Nenhum item cadastrado']],
+        head: [['Item', 'Descrição', 'Qtd', 'Unid.', 'Vlr Unit.', 'Impostos', 'Total', 'Apropriação']],
+        body: tableData.length > 0 ? tableData : [['', '', '', '', '', '', '', 'Nenhum item cadastrado']],
         theme: 'grid',
         headStyles: { 
           fillColor: [241, 245, 249], 
@@ -132,13 +155,14 @@ let y = 32; // ajuste a posição inicial dos dados
           cellPadding: 1.5 
         },
         columnStyles: {
-          0: { cellWidth: 12, halign: 'center' },
-          1: { cellWidth: 70 },
-          2: { cellWidth: 15, halign: 'center' },
-          3: { cellWidth: 15, halign: 'center' },
-          4: { cellWidth: 20, halign: 'right' },
-          5: { cellWidth: 20, halign: 'right' },
-          6: { cellWidth: 20, halign: 'right' }
+          0: { cellWidth: 10, halign: 'center' },
+          1: { cellWidth: 50 },
+          2: { cellWidth: 12, halign: 'center' },
+          3: { cellWidth: 12, halign: 'center' },
+          4: { cellWidth: 18, halign: 'right' },
+          5: { cellWidth: 18, halign: 'right' },
+          6: { cellWidth: 18, halign: 'right' },
+          7: { cellWidth: 40 }
         },
         styles: { 
           font: 'helvetica', 

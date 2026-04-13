@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { FiArrowLeft, FiPlus, FiTrash } from 'react-icons/fi';
+import { FiArrowLeft, FiPlus, FiTrash, FiX } from 'react-icons/fi';
 
 interface Obra {
   id: number;
@@ -20,10 +20,13 @@ interface ServicoOrcamento {
   descricao: string;
 }
 
-// ✅ Nova interface para Pedido de Compra
+// ✅ Nova interface para Pedido de Compra (com dados relacionados)
 interface PedidoCompra {
   id: number;
   codigo: string;
+  data_pedido?: string;
+  obras?: { nome: string };
+  fornecedores?: { nome_fantasia: string };
   itens: {
     descricao: string;
     unidade: string;
@@ -59,6 +62,20 @@ interface NotaFiscalPayload {
   itens: Omit<ItemNota, 'id' | 'preco_total'>[];
 }
 
+// ✅ Função para formatar números no padrão brasileiro (R$ 1.234,56)
+const formatarMoedaBR = (valor: number): string => {
+  return valor.toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+};
+
+// ✅ Função para formatar número decimal com vírgula (para input)
+const formatarDecimalInput = (valor: number): string => {
+  if (isNaN(valor) || valor === null || valor === undefined) return '';
+  return valor.toFixed(2).replace('.', ',');
+};
+
 export default function NovaNotaFiscal() {
   const navigate = useNavigate();
 
@@ -79,7 +96,7 @@ export default function NovaNotaFiscal() {
   const [freteEmEdicao, setFreteEmEdicao] = useState<string | undefined>(undefined);
   
   // ✅ Estado para valor bruto do desconto (durante digitação)
-const [descontoEmEdicao, setDescontoEmEdicao] = useState<string | undefined>(undefined);
+  const [descontoEmEdicao, setDescontoEmEdicao] = useState<string | undefined>(undefined);
 
   const [dataLancamento] = useState(() => new Date().toISOString().split('T')[0]);
 
@@ -303,6 +320,22 @@ const [descontoEmEdicao, setDescontoEmEdicao] = useState<string | undefined>(und
     navigate('/fornecedores');
   };
 
+  // ✅ Função para limpar arquivo anexado da Nota Fiscal
+  const limparAnexoNF = () => {
+    setAnexoNF(null);
+    // Resetar o input file para permitir re-selecionar o mesmo arquivo
+    const input = document.querySelector('input[type="file"][accept=".pdf,.jpg,.jpeg,.png"]') as HTMLInputElement;
+    if (input) input.value = '';
+  };
+
+  // ✅ Função para limpar arquivo anexado do Boleto
+  const limparAnexoBoleto = () => {
+    setAnexoBoleto(null);
+    // Resetar o input file para permitir re-selecionar o mesmo arquivo
+    const inputs = document.querySelectorAll('input[type="file"]');
+    if (inputs[1]) (inputs[1] as HTMLInputElement).value = '';
+  };
+
   if (loading) {
     return <div className="p-6">Carregando...</div>;
   }
@@ -367,7 +400,7 @@ const [descontoEmEdicao, setDescontoEmEdicao] = useState<string | undefined>(und
             </div>
           </div>
 
-          {/* ✅ SELEÇÃO DE PEDIDO DE COMPRA */}
+          {/* ✅ SELEÇÃO DE PEDIDO DE COMPRA — COM MAIS INFORMAÇÕES */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Pedido de Compra (opcional)
@@ -378,18 +411,31 @@ const [descontoEmEdicao, setDescontoEmEdicao] = useState<string | undefined>(und
               className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">— Não usar pedido —</option>
-              {pedidos.map(pedido => (
-                <option key={pedido.id} value={pedido.id}>
-                  {pedido.codigo || `PC-${String(pedido.id).padStart(4, '0')}`} - {pedido.itens.length} itens
-                </option>
-              ))}
+              {pedidos.map(pedido => {
+                const obraNome = pedido.obras?.nome || '—';
+                const fornecedorNome = pedido.fornecedores?.nome_fantasia || '—';
+                const dataPedido = pedido.data_pedido 
+                  ? new Date(pedido.data_pedido + 'T00:00:00').toLocaleDateString('pt-BR') 
+                  : '—';
+                // Mostra até 2 primeiras descrições de itens + "..." se houver mais
+                const descItens = pedido.itens.length > 0
+                  ? pedido.itens.slice(0, 2).map(i => i.descricao).join(', ') + 
+                    (pedido.itens.length > 2 ? '...' : '')
+                  : '—';
+                
+                return (
+                  <option key={pedido.id} value={pedido.id}>
+                    {pedido.codigo || `PC-${String(pedido.id).padStart(4, '0')}`} • {obraNome} • {fornecedorNome} • {dataPedido} • {descItens}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
           {/* Dados da Nota */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Número da NF *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Número do Documento *</label>
               <input
                 type="text"
                 value={numeroNota}
@@ -430,43 +476,43 @@ const [descontoEmEdicao, setDescontoEmEdicao] = useState<string | undefined>(und
           </div>
 
           {/* ✅ Campo de Desconto (usável, com cursor estável) */}
-<div>
-  <label className="block text-sm font-medium text-gray-700 mb-1">Desconto (R$)</label>
-  <input
-    type="text"
-    // Exibe valor bruto durante a digitação (sem formatação forçada)
-    value={descontoEmEdicao !== undefined ? descontoEmEdicao : (desconto > 0 ? desconto.toString().replace('.', ',') : '')}
-    onChange={(e) => {
-      let valor = e.target.value;
-      // Permite: dígitos, vírgula, e no máximo uma vírgula
-      valor = valor.replace(/[^0-9,]/g, '');
-      const partes = valor.split(',');
-      if (partes.length > 2) {
-        valor = partes[0] + ',' + partes[1];
-      }
-      // Atualiza valor temporário (não formata ainda)
-      setDescontoEmEdicao(valor);
-    }}
-    onBlur={(e) => {
-      // Ao sair do campo: converte para número e formata
-      let valor = descontoEmEdicao || e.target.value;
-      if (valor === '') {
-        setDesconto(0);
-        setDescontoEmEdicao('');
-        return;
-      }
-      // Normaliza para ponto
-      let numStr = valor.replace(',', '.');
-      let num = parseFloat(numStr);
-      if (isNaN(num) || num < 0) num = 0;
-      setDesconto(num);
-      // Opcional: exibir formatado após blur
-      setDescontoEmEdicao(num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-    }}
-    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-    placeholder="0,00"
-  />
-</div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Desconto (R$)</label>
+            <input
+              type="text"
+              // Exibe valor bruto durante a digitação (sem formatação forçada)
+              value={descontoEmEdicao !== undefined ? descontoEmEdicao : (desconto > 0 ? desconto.toString().replace('.', ',') : '')}
+              onChange={(e) => {
+                let valor = e.target.value;
+                // Permite: dígitos, vírgula, e no máximo uma vírgula
+                valor = valor.replace(/[^0-9,]/g, '');
+                const partes = valor.split(',');
+                if (partes.length > 2) {
+                  valor = partes[0] + ',' + partes[1];
+                }
+                // Atualiza valor temporário (não formata ainda)
+                setDescontoEmEdicao(valor);
+              }}
+              onBlur={(e) => {
+                // Ao sair do campo: converte para número e formata
+                let valor = descontoEmEdicao || e.target.value;
+                if (valor === '') {
+                  setDesconto(0);
+                  setDescontoEmEdicao('');
+                  return;
+                }
+                // Normaliza para ponto
+                let numStr = valor.replace(',', '.');
+                let num = parseFloat(numStr);
+                if (isNaN(num) || num < 0) num = 0;
+                setDesconto(num);
+                // Opcional: exibir formatado após blur
+                setDescontoEmEdicao(num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+              }}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="0,00"
+            />
+          </div>
 
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1">Lançado por</label>
@@ -536,29 +582,67 @@ const [descontoEmEdicao, setDescontoEmEdicao] = useState<string | undefined>(und
             />
           </div>
 
-          {/* Campos de anexo */}
+          {/* Campos de anexo COM BOTÃO DE EXCLUIR */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Anexar Nota Fiscal (PDF ou imagem)
               </label>
-              <input
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
-                onChange={(e) => setAnexoNF(e.target.files?.[0] || null)}
-                className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(e) => setAnexoNF(e.target.files?.[0] || null)}
+                  className="flex-1 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700"
+                />
+                {/* ✅ Botão de excluir - aparece apenas quando há arquivo selecionado */}
+                {anexoNF && (
+                  <button
+                    type="button"
+                    onClick={limparAnexoNF}
+                    className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition"
+                    title="Remover arquivo"
+                  >
+                    <FiX className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+              {/* ✅ Nome do arquivo selecionado */}
+              {anexoNF && (
+                <p className="mt-1 text-xs text-gray-500 truncate">
+                  📎 {anexoNF.name}
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Anexar Boleto Bancário (PDF ou imagem)
               </label>
-              <input
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
-                onChange={(e) => setAnexoBoleto(e.target.files?.[0] || null)}
-                className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-green-600 file:text-white hover:file:bg-green-700"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(e) => setAnexoBoleto(e.target.files?.[0] || null)}
+                  className="flex-1 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-green-600 file:text-white hover:file:bg-green-700"
+                />
+                {/* ✅ Botão de excluir - aparece apenas quando há arquivo selecionado */}
+                {anexoBoleto && (
+                  <button
+                    type="button"
+                    onClick={limparAnexoBoleto}
+                    className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition"
+                    title="Remover arquivo"
+                  >
+                    <FiX className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+              {/* ✅ Nome do arquivo selecionado */}
+              {anexoBoleto && (
+                <p className="mt-1 text-xs text-gray-500 truncate">
+                  📎 {anexoBoleto.name}
+                </p>
+              )}
             </div>
           </div>
 
@@ -616,7 +700,7 @@ const [descontoEmEdicao, setDescontoEmEdicao] = useState<string | undefined>(und
                           value={
                             valorEmEdicao[`qtd_${item.id}`] !== undefined
                               ? valorEmEdicao[`qtd_${item.id}`]
-                              : numeroParaInput(item.quantidade)
+                              : formatarDecimalInput(item.quantidade)
                           }
                           onChange={(e) => {
                             let valor = e.target.value;
@@ -657,7 +741,7 @@ const [descontoEmEdicao, setDescontoEmEdicao] = useState<string | undefined>(und
                           value={
                             valorEmEdicao[`unit_${item.id}`] !== undefined
                               ? valorEmEdicao[`unit_${item.id}`]
-                              : numeroParaInput(item.preco_unit)
+                              : formatarDecimalInput(item.preco_unit)
                           }
                           onChange={(e) => {
                             let valor = e.target.value;
@@ -698,7 +782,7 @@ const [descontoEmEdicao, setDescontoEmEdicao] = useState<string | undefined>(und
                           value={
                             valorEmEdicao[`imp_${item.id}`] !== undefined
                               ? valorEmEdicao[`imp_${item.id}`]
-                              : numeroParaInput(item.imposto)
+                              : formatarDecimalInput(item.imposto)
                           }
                           onChange={(e) => {
                             let valor = e.target.value;
@@ -733,22 +817,31 @@ const [descontoEmEdicao, setDescontoEmEdicao] = useState<string | undefined>(und
                         />
                       </td>
                       <td className="px-3 py-2 text-sm font-medium">
-                        R$ {item.preco_total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        R$ {formatarMoedaBR(item.preco_total)}
                       </td>
                       <td className="px-3 py-2">
-                        <select
-                          value={item.orcamento_item_id || ''}
-                          onChange={e => atualizarItem(item.id, 'orcamento_item_id', e.target.value ? Number(e.target.value) : null)}
+                        {/* ✅ Substituído por datalist */}
+                        <input
+                          list={`servicos-${item.id}`}
+                          placeholder="Digite código ou descrição..."
                           className="w-full text-sm px-2 py-1 border border-gray-300 rounded"
-                          required
-                        >
-                          <option value="">Selecione um serviço</option>
+                          onChange={(e) => {
+                            const selected = servicos.find(s => 
+                              s.codigo === e.target.value || 
+                              s.descricao === e.target.value
+                            );
+                            atualizarItem(
+                              item.id, 
+                              'orcamento_item_id', 
+                              selected ? selected.id : null
+                            );
+                          }}
+                        />
+                        <datalist id={`servicos-${item.id}`}>
                           {servicos.map(servico => (
-                            <option key={servico.id} value={servico.id}>
-                              {servico.codigo} - {servico.descricao}
-                            </option>
+                            <option key={servico.id} value={`${servico.codigo} - ${servico.descricao}`} />
                           ))}
-                        </select>
+                        </datalist>
                       </td>
                       <td className="px-3 py-2">
                         {itens.length > 1 && (
@@ -768,30 +861,30 @@ const [descontoEmEdicao, setDescontoEmEdicao] = useState<string | undefined>(und
             </div>
           </div>
 
-                    {/* ✅ TOTALIZADOR VISUAL */}
+          {/* ✅ TOTALIZADOR VISUAL */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <h3 className="text-lg font-bold text-blue-800 mb-2">Resumo da Nota Fiscal</h3>
             <div className="space-y-1 text-sm">
               <div className="flex justify-between">
                 <span>Total dos Itens:</span>
-                <span className="font-medium">R$ {itens.reduce((sum, item) => sum + (item.preco_total || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span className="font-medium">R$ {formatarMoedaBR(itens.reduce((sum, item) => sum + (item.preco_total || 0), 0))}</span>
               </div>
               <div className="flex justify-between">
                 <span>Frete:</span>
-                <span className="font-medium">R$ {frete.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span className="font-medium">R$ {formatarMoedaBR(frete)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Desconto:</span>
-                <span className="font-medium text-red-600">- R$ {desconto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span className="font-medium text-red-600">- R$ {formatarMoedaBR(desconto)}</span>
               </div>
               <div className="border-t border-blue-300 pt-2 mt-2 flex justify-between font-bold text-lg text-blue-900">
                 <span>Valor Total:</span>
                 <span>
-                  R$ {(
+                  R$ {formatarMoedaBR(
                     itens.reduce((sum, item) => sum + (item.preco_total || 0), 0) +
                     frete -
                     desconto
-                  ).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  )}
                 </span>
               </div>
             </div>

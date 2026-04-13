@@ -55,6 +55,10 @@ export default function EditarNotaFiscal() {
     status: 'pendente'
   });
 
+  // ✅ Estados para os arquivos de anexo
+  const [anexoNotaFiscal, setAnexoNotaFiscal] = useState<File | null>(null);
+  const [anexoBoleto, setAnexoBoleto] = useState<File | null>(null);
+
   const [itens, setItens] = useState<ItemNota[]>([]);
   const [freteEmEdicao, setFreteEmEdicao] = useState<string | undefined>(undefined);
   const [descontoEmEdicao, setDescontoEmEdicao] = useState<string | undefined>(undefined);
@@ -189,7 +193,7 @@ export default function EditarNotaFiscal() {
     });
   };
 
-  // ✅ Salvar alterações com lógica correta para itens
+  // ✅ Salvar alterações com lógica correta para itens e anexos
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -203,25 +207,49 @@ export default function EditarNotaFiscal() {
     const valorTotal = totalItens + (formData.frete || 0) - (formData.desconto || 0);
 
     try {
-      // ✅ Preparar payload com estrutura que o backend espera
-      const payload = {
-        ...formData,
-        valor_total: valorTotal,
-        // ✅ Enviar itens com estrutura completa, incluindo db_id para update
-        itens: itens.map(item => ({
-          id: item.db_id,              // ID do banco (null = novo item)
-          descricao: item.descricao,
-          unidade: item.unidade,
-          quantidade: item.quantidade,
-          preco_unit: item.preco_unit,
-          imposto: item.imposto,
-          preco_total: item.preco_total,
-          orcamento_item_id: item.orcamento_item_id
-        }))
-      };
+      // ✅ Criar FormData para envio de arquivos
+      const formDataEnvio = new FormData();
+      
+      // Adicionar campos principais
+      formDataEnvio.append('obra_id', formData.obra_id);
+      formDataEnvio.append('fornecedor_id', formData.fornecedor_id);
+      formDataEnvio.append('numero_nota', formData.numero_nota);
+      formDataEnvio.append('data_emissao', formData.data_emissao);
+      formDataEnvio.append('data_vencimento', formData.data_vencimento);
+      formDataEnvio.append('data_pagamento', formData.data_pagamento || '');
+      formDataEnvio.append('forma_pagamento', formData.forma_pagamento);
+      formDataEnvio.append('frete', formData.frete.toString());
+      formDataEnvio.append('desconto', formData.desconto.toString());
+      formDataEnvio.append('status', formData.status);
+      formDataEnvio.append('valor_total', valorTotal.toString());
+
+      // ✅ Adicionar itens como JSON
+      const itensPayload = itens.map(item => ({
+        id: item.db_id,              // ID do banco (null = novo item)
+        descricao: item.descricao,
+        unidade: item.unidade,
+        quantidade: item.quantidade,
+        preco_unit: item.preco_unit,
+        imposto: item.imposto,
+        preco_total: item.preco_total,
+        orcamento_item_id: item.orcamento_item_id
+      }));
+      formDataEnvio.append('itens', JSON.stringify(itensPayload));
+
+      // ✅ Adicionar arquivos se existirem
+      if (anexoNotaFiscal) {
+        formDataEnvio.append('anexo_nota_fiscal', anexoNotaFiscal);
+      }
+      if (anexoBoleto) {
+        formDataEnvio.append('anexo_boleto', anexoBoleto);
+      }
 
       // ✅ URL corrigida (sem espaços)
-      await axios.put(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/${notaId}`, payload);
+      await axios.put(`https://erp-minhas-obras-backend.onrender.com/notas-fiscais/${notaId}`, formDataEnvio, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
       
       alert('Nota fiscal atualizada com sucesso!');
       navigate('/financeiro');
@@ -419,6 +447,30 @@ export default function EditarNotaFiscal() {
             </div>
           </div>
 
+          {/* Anexos */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Anexo da Nota Fiscal</label>
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={(e) => setAnexoNotaFiscal(e.target.files?.[0] || null)}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={isPago}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Anexo do Boleto</label>
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={(e) => setAnexoBoleto(e.target.files?.[0] || null)}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={isPago}
+              />
+            </div>
+          </div>
+
           {/* Tabela de Itens */}
           <div>
             <div className="flex justify-between items-center mb-2">
@@ -496,10 +548,28 @@ export default function EditarNotaFiscal() {
                       </td>
                       <td className="px-3 py-2 text-sm font-medium">R$ {item.preco_total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                       <td className="px-3 py-2">
-                        <select value={item.orcamento_item_id || ''} onChange={e => atualizarItem(item.id, 'orcamento_item_id', e.target.value ? Number(e.target.value) : null)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded" required disabled={isPago}>
-                          <option value="">Selecione</option>
-                          {servicos.map(s => <option key={s.id} value={s.id}>{s.codigo} - {s.descricao}</option>)}
-                        </select>
+                        {/* ✅ Substituído por datalist */}
+                        <input
+                          list={`servicos-${item.id}`}
+                          placeholder="Digite código ou descrição..."
+                          className="w-full text-sm px-2 py-1 border border-gray-300 rounded"
+                          onChange={(e) => {
+                            const selected = servicos.find(s => 
+                              s.codigo === e.target.value || 
+                              s.descricao === e.target.value
+                            );
+                            atualizarItem(
+                              item.id, 
+                              'orcamento_item_id', 
+                              selected ? selected.id : null
+                            );
+                          }}
+                        />
+                        <datalist id={`servicos-${item.id}`}>
+                          {servicos.map(servico => (
+                            <option key={servico.id} value={`${servico.codigo} - ${servico.descricao}`} />
+                          ))}
+                        </datalist>
                       </td>
                       {!isPago && (
                         <td className="px-3 py-2">
