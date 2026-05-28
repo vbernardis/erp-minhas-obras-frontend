@@ -72,7 +72,7 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    if (!hasPermission('obras.listar')) {
+    if (!hasPermission('obras:listar')) {
       alert('Você não tem permissão para acessar esta página.');
       navigate('/login');
       return;
@@ -150,7 +150,7 @@ export default function Dashboard() {
         <div className="text-center py-12">
           <FiFile className="w-12 h-12 text-gray-400 mx-auto mb-3" />
           <p className="text-gray-600 text-lg mb-4">Nenhuma obra cadastrada ainda.</p>
-          {hasPermission('obras:write') && (
+          {hasPermission('obras:criar') && (
             <button
               onClick={() => navigate('/obras')}
               className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-300 shadow-md hover:shadow-lg text-sm font-medium"
@@ -198,7 +198,7 @@ export default function Dashboard() {
                       </div>
                       <div className="flex justify-between items-center bg-gray-50 px-3 py-2 rounded-lg">
                         <span className="text-xs font-semibold text-gray-700">Valor Realizado</span>
-                        <span className="text-sm font-bold text-orange-600">{formatarMoeda(obra.valor_realizado)}</span> {/* ← USANDO VALOR DIRETO */}
+                        <span className="text-sm font-bold text-orange-600">{formatarMoeda(obra.valor_realizado)}</span>
                       </div>
                     </div>
 

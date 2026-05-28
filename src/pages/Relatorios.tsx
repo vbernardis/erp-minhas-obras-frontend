@@ -36,6 +36,26 @@ const formatarMoeda = (valor: number): string => {
   }).format(valor);
 };
 
+// ✅ FUNÇÃO PARA PARSE DE VALORES MONETÁRIOS (FORMATO BR OU US)
+const parseValorMonetario = (valor: any): number => {
+  if (valor === null || valor === undefined || valor === '') return 0;
+  if (typeof valor === 'number') return valor;
+  
+  const str = valor.toString().trim();
+  
+  // Detecta formato pelo padrão de separadores
+  if (str.includes(',') && str.includes('.')) {
+    // Formato BR: "1.234,56" → remove pontos de milhar, troca vírgula por ponto
+    return parseFloat(str.replace(/\./g, '').replace(',', '.'));
+  } else if (str.includes(',')) {
+    // Formato BR simplificado: "1234,56" → só troca vírgula por ponto
+    return parseFloat(str.replace(',', '.'));
+  } else {
+    // Formato US ou número puro: "1234.56" ou "1234" → parse direto
+    return parseFloat(str);
+  }
+};
+
 // Componente de Card de Obra (idêntico ao Dashboard)
 const ObraSummaryCard = ({ obra, onAction }: { obra: Obra; onAction?: (tipo: string, id: number) => void }) => {
   const evolucao = obra.valor_previsto > 0
@@ -305,8 +325,9 @@ export default function Relatorios() {
       return;
     }
 
-    const totalOrcado = itensOrcamento.reduce((sum, item) => sum + (item.total_item || 0), 0);
-    const totalRealizado = itensOrcamento.reduce((sum, item) => sum + (item.realizado || 0), 0);
+    // ✅ CORREÇÃO: Tipos explícitos para os parâmetros do reduce
+    const totalOrcado = itensOrcamento.reduce((sum: number, item: any) => sum + (item.total_item || 0), 0);
+    const totalRealizado = itensOrcamento.reduce((sum: number, item: any) => sum + (item.realizado || 0), 0);
 
     const wb = XLSX.utils.book_new();
     const ws: XLSX.WorkSheet = {};
@@ -473,8 +494,9 @@ export default function Relatorios() {
       });
 
       // ✅ ADICIONAR LINHA DE TOTAL NO FINAL
-      const totalOrcado = itensOrcamento.reduce((sum, item) => sum + (item.total_item || 0), 0);
-      const totalRealizado = itensOrcamento.reduce((sum, item) => sum + (item.realizado || 0), 0);
+      // ✅ CORREÇÃO: Tipos explícitos para os parâmetros do reduce
+      const totalOrcado = itensOrcamento.reduce((sum: number, item: any) => sum + (item.total_item || 0), 0);
+      const totalRealizado = itensOrcamento.reduce((sum: number, item: any) => sum + (item.realizado || 0), 0);
       const totalPercentual = totalOrcado > 0 ? ((totalRealizado / totalOrcado) * 100) : 0;
       
       const totalRow = [
@@ -546,7 +568,7 @@ export default function Relatorios() {
     }
   };
 
-  // Efeito para carregar "Orçado x Realizado"
+  // Efeito para carregar "Orçado x Realizado" - ✅ CORREÇÃO DEFINITIVA
   useEffect(() => {
     if (tipoRelatorio === 'orcamento-comparativo' && obraIdRelatorio) {
       setCarregandoOrcamento(true);
@@ -554,29 +576,76 @@ export default function Relatorios() {
         try {
           console.log('🔍 Carregando dados para obra ID:', obraIdRelatorio);
           
+          // 1. Buscar dados da obra
           const resObra = await axios.get(`https://erp-minhas-obras-backend.onrender.com/obras/${obraIdRelatorio}`);
           setObraNome(resObra.data.nome);
 
+          // 2. Buscar itens do orçamento
           const resOrc = await axios.get(`https://erp-minhas-obras-backend.onrender.com/obras/${obraIdRelatorio}/itens-orcamento`);
           const itens = resOrc.data;
+          console.log('📦 Itens do orçamento carregados:', itens.length);
+          
+          // 🔍 DEBUG: Log dos primeiros 10 IDs dos itens do orçamento
+          console.log('🔑 Primeiros IDs dos itens do orçamento:', 
+            itens.slice(0, 10).map((i: any) => ({ id: i.id, tipo: typeof i.id, codigo: i.codigo }))
+          );
 
+          // 3. Buscar valores realizados por item
           const resReal = await axios.get(`https://erp-minhas-obras-backend.onrender.com/relatorios/obra/${obraIdRelatorio}/realizado-por-item`);
+          console.log('💰 Valores realizados recebidos:', resReal.data);
+          
+          // 🔍 DEBUG: Log dos IDs recebidos do backend
+          console.log('🔑 IDs com valor realizado (backend):', 
+            resReal.data.map((r: any) => ({ id: r.orcamento_item_id, tipo: typeof r.orcamento_item_id }))
+          );
 
-          const realizadoMap = new Map<number, number>();
+          // No bloco de criação do realizadoMap:
+          const realizadoMap = new Map<string, number>();
+
           resReal.data.forEach((r: any) => {
-            realizadoMap.set(r.orcamento_item_id, parseFloat(r.valor_realizado));
+            const key = r.codigo || String(r.orcamento_item_id);
+            
+            // ✅ USAR FUNÇÃO DE PARSE ROBUSTA
+            const valor = parseValorMonetario(r.valor_realizado);
+            
+            if (key && !isNaN(valor)) {
+              realizadoMap.set(key, valor);
+              console.log(`🗺️ Mapa: "${key}" = R$ ${valor.toFixed(2)}`);
+            }
           });
 
-          const itensComRealizado = itens.map((item: any) => ({
-            ...item,
-            realizado: realizadoMap.get(item.id) || 0,
-            total_item: parseFloat(item.total_item) || 0,
-            quantidade: item.quantidade ? parseFloat(item.quantidade) : null,
-            valor_unitario_material: item.valor_unitario_material ? parseFloat(item.valor_unitario_material) : null,
-            valor_unitario_mao_obra: item.valor_unitario_mao_obra ? parseFloat(item.valor_unitario_mao_obra) : null,
-          }));
+          // No mapeamento dos itens:
+          const itensComRealizado = itens.map((item: any) => {
+            let realizado = realizadoMap.get(item.codigo);
+            
+            if (realizado === undefined && item.id !== undefined) {
+              realizado = realizadoMap.get(String(item.id));
+            }
+            
+            return {
+              ...item,
+              realizado: realizado || 0,
+              // ✅ USAR parseValorMonetario EM TODOS OS CAMPOS MONETÁRIOS
+              total_item: parseValorMonetario(item.total_item),
+              quantidade: item.quantidade !== null ? parseValorMonetario(item.quantidade) : null,
+              valor_unitario_material: item.valor_unitario_material !== null ? parseValorMonetario(item.valor_unitario_material) : null,
+              valor_unitario_mao_obra: item.valor_unitario_mao_obra !== null ? parseValorMonetario(item.valor_unitario_mao_obra) : null,
+            };
+          });
 
+          // ✅ Debug final
+          const comValor = itensComRealizado.filter((i: any) => i.realizado > 0).length;
+          console.log(`✅ Itens com realizado > 0: ${comValor} de ${itensComRealizado.length}`);
+          
+          // 🔍 DEBUG FINAL: Se ainda for 0, mostrar comparação direta
+          if (comValor === 0 && realizadoMap.size > 0) {
+            console.error('❌ NENHUM ITEM ENCONTROU VALOR REALIZADO!');
+            console.error('   IDs no mapa:', Array.from(realizadoMap.keys()));
+            console.error('   Primeiros IDs dos itens:', itens.slice(0, 10).map((i: any) => i.id));
+          }
+          
           setItensOrcamento(itensComRealizado);
+          
         } catch (err) {
           console.error('💥 Erro ao carregar relatório:', err);
           alert('Erro ao carregar dados do relatório: verifique o console.');
@@ -600,8 +669,9 @@ export default function Relatorios() {
   // === TELA DETALHADA: ORÇADO X REALIZADO ===
   if (tipoRelatorio === 'orcamento-comparativo' && obraIdRelatorio) {
     // === Cálculo dos totais ===
-    const totalOrcado = itensOrcamento.reduce((sum, item) => sum + (item.total_item || 0), 0);
-    const totalRealizado = itensOrcamento.reduce((sum, item) => sum + (item.realizado || 0), 0);
+    // ✅ CORREÇÃO: Tipos explícitos para os parâmetros do reduce
+    const totalOrcado = itensOrcamento.reduce((sum: number, item: any) => sum + (item.total_item || 0), 0);
+    const totalRealizado = itensOrcamento.reduce((sum: number, item: any) => sum + (item.realizado || 0), 0);
     const totalPercentual = totalOrcado > 0 ? ((totalRealizado / totalOrcado) * 100) : 0;
 
     return (

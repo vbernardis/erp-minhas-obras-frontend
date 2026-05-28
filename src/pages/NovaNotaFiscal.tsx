@@ -245,8 +245,16 @@ export default function NovaNotaFiscal() {
       return;
     }
 
+    // 🔍 DEBUG: Logar apropriação dos itens ANTES da validação
+    console.log('🔍 Debug apropriação:', itens.map(i => ({
+      descricao: i.descricao,
+      orcamento_item_id: i.orcamento_item_id,
+      temVinculo: i.orcamento_item_id !== null
+    })));
+
     const itensSemApropriacao = itens.filter(item => item.orcamento_item_id === null);
     if (itensSemApropriacao.length > 0) {
+      console.warn('❌ Itens sem apropriação:', itensSemApropriacao);
       alert('Todos os itens devem estar vinculados a um serviço do orçamento.');
       return;
     }
@@ -819,30 +827,56 @@ export default function NovaNotaFiscal() {
                       <td className="px-3 py-2 text-sm font-medium">
                         R$ {formatarMoedaBR(item.preco_total)}
                       </td>
-                      <td className="px-3 py-2">
-                        {/* ✅ Substituído por datalist */}
-                        <input
-                          list={`servicos-${item.id}`}
-                          placeholder="Digite código ou descrição..."
-                          className="w-full text-sm px-2 py-1 border border-gray-300 rounded"
-                          onChange={(e) => {
-                            const selected = servicos.find(s => 
-                              s.codigo === e.target.value || 
-                              s.descricao === e.target.value
+                      {/* Apropriação (Serviço do Orçamento) */}
+                    <td className="px-3 py-2">
+                      <input
+                        list={`servicos-${item.id}`}
+                        placeholder="Digite código ou descrição..."
+                        className="w-full text-sm px-2 py-1 border border-gray-300 rounded"
+                        onChange={(e) => {
+                          const valorSelecionado = e.target.value;
+                          
+                          // ✅ Busca pelo ID direto (se o value for o ID)
+                          let selected = servicos.find(s => String(s.id) === valorSelecionado);
+                          
+                          // ✅ Fallback: tenta buscar pelo formato "codigo - descricao"
+                          if (!selected) {
+                            selected = servicos.find(s => 
+                              `${s.codigo} - ${s.descricao}`.toLowerCase() === valorSelecionado.toLowerCase()
                             );
-                            atualizarItem(
-                              item.id, 
-                              'orcamento_item_id', 
-                              selected ? selected.id : null
-                            );
-                          }}
-                        />
-                        <datalist id={`servicos-${item.id}`}>
-                          {servicos.map(servico => (
-                            <option key={servico.id} value={`${servico.codigo} - ${servico.descricao}`} />
-                          ))}
-                        </datalist>
-                      </td>
+                          }
+                          
+                          // ✅ Fallback: tenta buscar só pelo código (primeira parte antes do " - ")
+                          if (!selected) {
+                            const codigoBusca = valorSelecionado.split(' - ')[0]?.trim();
+                            selected = servicos.find(s => s.codigo === codigoBusca);
+                          }
+                          
+                          atualizarItem(
+                            item.id, 
+                            'orcamento_item_id', 
+                            selected ? selected.id : null
+                          );
+                        }}
+                      />
+                      <datalist id={`servicos-${item.id}`}>
+                        {servicos.map(servico => (
+                          // ✅ VALUE = ID (garante match exato)
+                          <option 
+                            key={servico.id} 
+                            value={String(servico.id)}
+                            label={`${servico.codigo} - ${servico.descricao}`}
+                          />
+                        ))}
+                      </datalist>
+                      
+                      {/* ✅ Feedback visual: mostra o código selecionado */}
+                      {item.orcamento_item_id && (
+                        <span className="text-xs text-green-600 mt-1 block">
+                          ✓ {servicos.find(s => s.id === item.orcamento_item_id)?.codigo}
+                        </span>
+                      )}
+                    </td>
                       <td className="px-3 py-2">
                         {itens.length > 1 && (
                           <button
